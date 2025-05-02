@@ -44,8 +44,8 @@ RUN pip install --upgrade pip \
     && pip install manim \
     && python3 -c "import manim; print(f'Manim {manim.__version__} installed successfully')"
 
-# Install FastAPI and uvicorn for API service
-RUN pip install fastapi uvicorn pydantic python-multipart
+# Install FastAPI, uvicorn and fastapi-mcp for API service
+RUN pip install fastapi uvicorn pydantic python-multipart fastapi-mcp>=0.3.0
 
 # Copy the API application
 COPY ./app /manim/app

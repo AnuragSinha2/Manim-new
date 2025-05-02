@@ -7,6 +7,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTa
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from fastapi_mcp import FastApiMCP
 
 app = FastAPI(title="Manim API", description="API for running Manim animations")
 
@@ -200,4 +201,8 @@ def get_job_file(job_id: str, file_name: str):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
     
-    return FileResponse(file_path) 
+    return FileResponse(file_path)
+
+# Create the MCP server and mount it to the FastAPI app
+mcp = FastApiMCP(app)
+mcp.mount() 

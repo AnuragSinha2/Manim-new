@@ -160,6 +160,33 @@ GET /jobs/{job_id}/files
 GET /jobs/{job_id}/files/{file_name}
 ```
 
+## Model Context Protocol (MCP) Integration
+
+This API now supports the [Model Context Protocol (MCP)](https://github.com/tadata-org/fastapi_mcp), allowing AI assistants to directly interact with Manim capabilities.
+
+### MCP Endpoint
+
+The MCP endpoint is available at:
+
+```
+http://localhost:8000/mcp
+```
+
+### Using with AI Assistants
+
+AI assistants like Claude that support MCP can use this API to:
+
+1. Discover available Manim animation capabilities
+2. Run Manim commands to generate animations
+3. Upload and execute Python files with custom scenes
+4. Access generated media files
+
+This integration makes it possible for AI assistants to create mathematical animations through natural language requests.
+
+### MCP Authentication
+
+The MCP integration uses the same authentication as the REST API. If you've configured API keys or other authentication methods, they will be applied to MCP requests as well.
+
 ## Examples
 
 ### Using curl to run a Manim command:
@@ -194,4 +221,4 @@ docker run -p 8000:8000 \
   -v $(pwd)/uploads:/manim/uploads \
   -v $(pwd)/temp:/manim/temp \
   manim-api
-``` 
+```
