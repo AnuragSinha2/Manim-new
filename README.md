@@ -1,224 +1,228 @@
-# Manim Docker Container
+# Manim Docker
 
-This repository contains a Docker configuration for running [Manim](https://www.manim.community/), a mathematical animation engine.
+![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)
+![Docker](https://img.shields.io/badge/Docker-Ready-blue)
+![Manim](https://img.shields.io/badge/Manim-Animation-green)
+![API](https://img.shields.io/badge/FastAPI-REST-teal)
 
-## Setup
+A Docker-based environment for creating mathematical animations with [Manim](https://www.manim.community/), featuring both a CLI interface and a web API with Model Context Protocol (MCP) support for AI assistants.
 
-1. Make sure you have Docker installed and running on your system.
-2. Clone this repository:
+## 📑 Overview
+
+This project provides:
+
+1. **Containerized Manim Environment**: Run Manim in an isolated, reproducible Docker environment
+2. **Web API**: Create and manage Manim animations via HTTP requests
+3. **MCP Integration**: Direct interaction with AI assistants like Claude
+4. **File Management**: Upload scripts and download generated animations
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose installed on your system
+
+### Installation
+
+#### Option 1: Use the Prebuilt Image (Recommended)
+
+Simply pull the prebuilt image from Docker Hub:
+
+```bash
+docker pull wstcpyt/manim-docker-mcp:latest
+```
+
+Then run it with docker-compose:
+
+```bash
+docker compose up -d
+```
+
+#### Option 2: Build Locally
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/manim-docker-mcp.git
+   cd manim-docker-mcp
    ```
-   git clone <repository-url>
-   cd manim-docker
-   ```
-3. Build the Docker image:
-   ```
+
+2. Build the Docker images:
+   ```bash
    docker compose build
    ```
 
-## Directory Structure
+### Usage
 
-- `animations/`: Place your Python files with Manim scenes here
-- `media/`: Output directory where rendered videos/images will be saved
+#### CLI Mode
 
-## Usage
+Create a Python file in the `animations` directory (see example below), then run:
 
-### Running a Scene
+```bash
+docker compose run manim -pql animations/example.py ExampleScene
+```
 
-Create a Python file in the `animations` directory, for example `animations/example.py`:
+#### API Mode
+
+Start the API server:
+
+```bash
+docker compose up -d manim-api
+```
+
+Access the API documentation at [http://localhost:8000/docs](http://localhost:8000/docs)
+
+## 🎬 Creating Animations
+
+### Basic Example
+
+Create a file `animations/example.py`:
 
 ```python
 from manim import *
 
-class ExampleScene(Scene):
+class CircleToSquare(Scene):
     def construct(self):
         circle = Circle()
         circle.set_fill(BLUE, opacity=0.5)
-        circle.set_stroke(BLUE_E, width=4)
+
         square = Square()
+        square.set_fill(RED, opacity=0.5)
 
-        self.play(Create(square))
+        self.play(Create(circle))
         self.wait()
-        self.play(Transform(square, circle))
+        self.play(Transform(circle, square))
         self.wait()
 ```
 
-Then run the scene using:
+### Running the Animation
 
 ```bash
-# Using the helper script (recommended)
-./run-manim.sh -pql animations/example.py ExampleScene
+# CLI mode with preview (-p), low quality (-ql)
+docker compose run manim -pql animations/example.py CircleToSquare
 
-# Or directly with Docker
-docker compose run manim -pql animations/example.py ExampleScene
+# API mode
+curl -X POST "http://localhost:8000/run-manim?filepath=/manim/temp/circle_example.py&scene_name=CircleToSquare&quality=low_quality"
 ```
 
-Command options:
+## 📂 Project Structure
+
+```
+manim-docker-mcp/
+├── animations/           # Manim animation scripts
+├── app/                  # FastAPI application
+├── media/                # Generated animations (CLI mode)
+├── output/               # Generated animations (API mode)
+├── temp/                 # Temporary files
+├── uploads/              # Uploaded animation scripts
+├── Dockerfile            # Docker image definition
+├── docker-compose.yml    # Docker Compose configuration
+└── README.md             # This file
+```
+
+## 🔧 Configuration
+
+### Quality Settings
+
+| Flag | Resolution | Frame Rate | Best For |
+|------|------------|------------|----------|
+| `-ql` | 480p | 15fps | Quick previews |
+| `-qm` | 720p | 30fps | General use |
+| `-qh` | 1080p | 60fps | Presentations |
+| `-qk` | 1440p | 60fps | Production videos |
+
+### Other Useful Flags
+
 - `-p`: Preview the output file
-- `-l`: Use low quality (faster)
-- `-m`: Use medium quality
-- `-h`: Use high quality (slower)
-- `-q`: Quiet mode
+- `-t`: Transparent background
+- `--save_last_frame`: Render only the last frame
+- `-c COLOR`: Set background color
 
-The rendered video will be available in the `media` directory.
+## 🌐 API Documentation
 
-### Rebuilding the Container
+### Core Endpoints
 
-If you need to rebuild the container (e.g., after modifying the Dockerfile):
-
-```bash
-./run-manim.sh --rebuild
-```
-
-### Interactive Shell
-
-To enter an interactive shell in the container:
-
-```bash
-docker compose run --entrypoint bash manim
-```
-
-## Troubleshooting
-
-- **Docker not running**: Make sure Docker is installed and the Docker daemon is running
-- **Permission issues**: The script automatically sets permissions on the media directory
-- **Missing directories**: The script creates `animations` and `media` directories if they don't exist
-- **Build issues**: If you encounter problems during the build, try rebuilding with `./run-manim.sh --rebuild`
-
-## Technical Details
-
-This container:
-- Uses Ubuntu 22.04 as the base image
-- Installs Python, required libraries (Cairo, Pango), and FFmpeg
-- Installs a full LaTeX distribution for mathematical formulas
-- Installs Manim using pip
-- Sets up appropriate volume mappings for your animations and output media
-
-## Customization
-
-You can modify the Dockerfile to install additional packages or change settings as needed.
-
-# Manim API Docker
-
-This Docker container provides a FastAPI web service that allows you to run [Manim](https://www.manim.community/) animations through a REST API.
-
-## Quick Start
-
-1. Build the Docker image:
-   ```bash
-   docker build -t manim-api .
-   ```
-
-2. Run the container:
-   ```bash
-   docker run -p 8000:8000 -v $(pwd)/output:/manim/output manim-api
-   ```
-
-3. Access the API documentation at http://localhost:8000/docs
-
-## API Endpoints
-
-### Run a Manim Command
-
+#### List Files
 ```http
-POST /run-command
+GET /list-files?directory=/manim
 ```
 
-Request body:
-```json
-{
-  "command": "example.py SquareToCircle",
-  "quality": "medium_quality",
-  "args": ["--format", "gif"]
-}
-```
-
-- `command`: The Manim command to run (e.g., file name and scene name)
-- `quality`: Quality setting (`low_quality`, `medium_quality`, `high_quality`, `production_quality`)
-- `args`: Additional arguments to pass to Manim
-
-### Upload and Run a Python File
-
+#### Write File
 ```http
-POST /run-python-file
+POST /write-file?filepath=/manim/temp/example.py
 ```
 
-Form data:
-- `file`: The Python file containing Manim scenes
-- `quality`: Quality setting (default: `medium_quality`)
-- `scene_name`: Optional scene name to render
-- `args`: Optional additional arguments as a string
-
-### List Files for a Job
-
+#### Run Animation
 ```http
-GET /jobs/{job_id}/files
+POST /run-manim?filepath=/manim/temp/example.py&scene_name=CircleToSquare
 ```
 
-### Download a File
-
+#### Download Animation
 ```http
-GET /jobs/{job_id}/files/{file_name}
+GET /download-file?filepath=/media/videos/example/480p15/CircleToSquare.mp4
 ```
 
-## Model Context Protocol (MCP) Integration
+Full API documentation is available at the `/docs` endpoint.
 
-This API now supports the [Model Context Protocol (MCP)](https://github.com/tadata-org/fastapi_mcp), allowing AI assistants to directly interact with Manim capabilities.
+## 🤖 AI Assistant Integration (MCP)
 
-### MCP Endpoint
+This project supports the [Model Context Protocol (MCP)](https://github.com/tadata-org/fastapi_mcp), enabling AI assistants to:
 
-The MCP endpoint is available at:
+1. Create Manim scripts based on natural language descriptions
+2. Run animations and provide download links
+3. Browse and manage generated media files
+
+Example MCP session:
 
 ```
-http://localhost:8000/mcp
+User: Create an animation showing a circle morphing into a square
+AI: I'll create that for you...
 ```
 
-### Using with AI Assistants
+## 🔍 Advanced Usage
 
-AI assistants like Claude that support MCP can use this API to:
+### Custom LaTeX
 
-1. Discover available Manim animation capabilities
-2. Run Manim commands to generate animations
-3. Upload and execute Python files with custom scenes
-4. Access generated media files
+The container includes a minimal LaTeX installation. Custom LaTeX can be used in animations:
 
-This integration makes it possible for AI assistants to create mathematical animations through natural language requests.
-
-### MCP Authentication
-
-The MCP integration uses the same authentication as the REST API. If you've configured API keys or other authentication methods, they will be applied to MCP requests as well.
-
-## Examples
-
-### Using curl to run a Manim command:
-
-```bash
-curl -X POST http://localhost:8000/run-command \
-  -H "Content-Type: application/json" \
-  -d '{"command": "temp/example.py SquareToCircle", "quality": "low_quality"}'
+```python
+formula = MathTex(r"\int_{a}^{b} f(x) \, dx = F(b) - F(a)")
+self.play(Write(formula))
 ```
 
-### Using curl to upload and run a Python file:
+### Mounting Custom Directories
 
-```bash
-curl -X POST http://localhost:8000/run-python-file \
-  -F "file=@example.py" \
-  -F "quality=low_quality" \
-  -F "scene_name=SquareToCircle"
+Modify the `docker-compose.yml` file to mount additional directories:
+
+```yaml
+volumes:
+  - ./my_custom_dir:/manim/custom
 ```
 
-## Volumes
+## 🛠️ Troubleshooting
 
-Mount these volumes when running the container:
+### Common Issues
 
-- `/manim/output`: For accessing generated media files
-- `/manim/uploads`: For persistent storage of uploaded files
-- `/manim/temp`: For temporary files
+- **Docker not running**: Make sure Docker daemon is running
+- **Permission errors**: The container needs write access to mounted volumes
+- **Missing media**: Check the correct output directory (media/ for CLI, output/ for API)
 
-Example:
-```bash
-docker run -p 8000:8000 \
-  -v $(pwd)/output:/manim/output \
-  -v $(pwd)/uploads:/manim/uploads \
-  -v $(pwd)/temp:/manim/temp \
-  manim-api
-```
+### Getting Help
+
+If you encounter issues:
+1. Check the [Manim documentation](https://docs.manim.community/)
+2. Search existing GitHub issues
+3. Create a new issue with details about your problem
+
+## 🤝 Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+## 📜 License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgements
+
+- [Manim Community](https://www.manim.community/) for the amazing animation engine
+- [FastAPI](https://fastapi.tiangolo.com/) for the web framework
+- [Model Context Protocol](https://github.com/tadata-org/fastapi_mcp) for AI integration

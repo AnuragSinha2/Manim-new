@@ -2,9 +2,7 @@ version: '3'
 
 services:
   manim-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: wstcpyt/manim-docker-mcp:latest
     ports:
       - "8000:8000"
     volumes:
@@ -13,7 +11,7 @@ services:
       - ./temp:/manim/temp
     restart: unless-stopped
   manim:
-    build: .
+    image: wstcpyt/manim-docker-mcp:latest
     volumes:
       - ./animations:/manim/animations
       - ./media:/manim/media
