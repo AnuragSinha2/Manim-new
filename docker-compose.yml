@@ -1,0 +1,22 @@
+version: '3'
+
+services:
+  manim-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./output:/manim/output
+      - ./uploads:/manim/uploads
+      - ./temp:/manim/temp
+    restart: unless-stopped
+  manim:
+    build: .
+    volumes:
+      - ./animations:/manim/animations
+      - ./media:/manim/media
+    working_dir: /manim
+    # Example command to render a scene
+    # command: -pql animations/example.py ExampleScene 
