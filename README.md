@@ -1,4 +1,4 @@
-# Manim Docker
+# Manim MCP
 
 ![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)
 ![Docker](https://img.shields.io/badge/Docker-Ready-blue)
@@ -212,10 +212,6 @@ If you encounter issues:
 1. Check the [Manim documentation](https://docs.manim.community/)
 2. Search existing GitHub issues
 3. Create a new issue with details about your problem
-
-## 🤝 Contributing
-
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## 📜 License
 
