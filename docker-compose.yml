@@ -1,20 +1,22 @@
-version: '3'
-
 services:
   manim-api:
-    image: wstcpyt/manim-docker-mcp:latest
+    build: .
+    container_name: manim_api_container
+    dns:
+      - 8.8.8.8
     ports:
       - "8000:8000"
     volumes:
-      - ./output:/manim/output
-      - ./uploads:/manim/uploads
-      - ./temp:/manim/temp
+      - ./projects:/manim/projects
     restart: unless-stopped
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
   manim:
-    image: wstcpyt/manim-docker-mcp:latest
+    build: .
+    container_name: manim_cli_container
     volumes:
-      - ./animations:/manim/animations
-      - ./media:/manim/media
+      - ./projects:/manim/projects
     working_dir: /manim
     # Example command to render a scene
-    # command: -pql animations/example.py ExampleScene 
+    command: ["-pql", "projects/Reflection of light/animations/laws_of_reflection.py", "LawsOfReflection"]
+    entrypoint: ["manim"] 

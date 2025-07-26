@@ -45,10 +45,11 @@ RUN pip install --upgrade pip \
     && python3 -c "import manim; print(f'Manim {manim.__version__} installed successfully')"
 
 # Install FastAPI, uvicorn and fastapi-mcp for API service
-RUN pip install fastapi uvicorn pydantic python-multipart fastapi-mcp>=0.3.0
+RUN pip install fastapi uvicorn pydantic python-multipart fastapi-mcp>=0.3.0 websockets --upgrade google-generativeai httpx
 
 # Copy the API application
 COPY ./app /manim/app
+COPY ./frontend /manim/frontend
 
 # Expose the API port
 EXPOSE 8000
