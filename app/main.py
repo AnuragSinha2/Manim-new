@@ -6,8 +6,6 @@ import mimetypes
 import subprocess
 import uuid
 import shutil
-import httpx
-import base64
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Union
 from fastapi import FastAPI, HTTPException, Query, Path as PathParam, Body, Response, WebSocket, WebSocketDisconnect
@@ -25,18 +23,10 @@ if GEMINI_API_KEY:
 
 app = FastAPI(title="Manim Project API", description="API for managing and creating Manim animations with project support.")
 
-# Get the directory of the current script
-APP_DIR = Path(__file__).parent.resolve()
-# Get the project root directory (one level up from 'app')
-PROJECT_ROOT = APP_DIR.parent
-
-# Now, define the base directories using these paths
-PROJECTS_BASE_DIR = str(PROJECT_ROOT / "projects")
-FRONTEND_DIR = str(PROJECT_ROOT / "frontend")
-
+PROJECTS_BASE_DIR = "/manim/projects"
 
 # Mount static files directory for a frontend
-app.mount("/ui", StaticFiles(directory=FRONTEND_DIR), name="ui")
+app.mount("/ui", StaticFiles(directory="/manim/frontend"), name="ui")
 app.mount("/projects", StaticFiles(directory=PROJECTS_BASE_DIR), name="projects")
 
 # --- Project Management ---
@@ -244,57 +234,6 @@ async def run_manim_ws(websocket: WebSocket, project_name: str):
 def read_root():
     return {"message": "Welcome to the Manim Project API. Visit /ui/index.html for the web interface."}
 
-async def generate_gemini_tts(text: str, output_path: str, websocket: WebSocket):
-    """Generates audio using the Gemini TTS API and saves it to a file."""
-    if not GEMINI_API_KEY:
-        await websocket.send_text(json.dumps({
-            "status": "error",
-            "stage": "TTS Generation",
-            "message": "GEMINI_API_KEY is not configured"
-        }))
-        return False
-
-    try:
-        await websocket.send_text(json.dumps({
-            "status": "progress",
-            "stage": "TTS Generation",
-            "message": "Initializing Gemini 2.5 Flash Preview TTS model..."
-        }))
-
-        # Use the official SDK with the specific TTS model
-        model = genai.GenerativeModel("gemini-2.5-flash-preview-tts")
-        
-        # The SDK call for dedicated TTS models is direct
-        response = await model.generate_content_async(text)
-
-        await websocket.send_text(json.dumps({
-            "status": "progress",
-            "stage": "TTS Generation",
-            "message": "Audio content received. Saving to file..."
-        }))
-
-        # The audio content is in response.audio_content for TTS models
-        if hasattr(response, 'audio_content') and response.audio_content:
-            with open(output_path, "wb") as f:
-                f.write(response.audio_content)
-            return True
-        else:
-            await websocket.send_text(json.dumps({
-                "status": "error",
-                "stage": "TTS Generation",
-                "message": "No audio data received from Gemini TTS API. The response format might have changed."
-            }))
-            return False
-
-    except Exception as e:
-        await websocket.send_text(json.dumps({
-            "status": "error",
-            "stage": "TTS Generation",
-            "message": f"An unexpected error occurred during TTS generation: {str(e)}"
-        }))
-        return False
-
-
 @app.websocket("/ws/generate-full-animation")
 async def generate_full_animation_ws(websocket: WebSocket):
     await websocket.accept()
@@ -312,11 +251,6 @@ async def generate_full_animation_ws(websocket: WebSocket):
         os.makedirs(project_path, exist_ok=True)
         for sub_dir in ["animations", "media", "output", "temp", "uploads"]:
             os.makedirs(os.path.join(project_path, sub_dir), exist_ok=True)
-
-        # Create a single, unique output directory for this entire job
-        run_id = str(uuid.uuid4())
-        output_dir = os.path.join(project_path, "output", run_id)
-        os.makedirs(output_dir, exist_ok=True)
 
         await websocket.send_text(json.dumps({"status": "progress", "stage": "AI Script Generation", "message": "Generating educational script for the topic..."}))
 
@@ -339,23 +273,11 @@ async def generate_full_animation_ws(websocket: WebSocket):
         # Step 2: Generate Manim code from the script
         manim_prompt = [
             "You are a Manim expert. Convert the following educational script into a single Python script for a Manim animation.",
-            "The script must be robust, visually clear, and avoid common rendering errors.",
-            "Follow these guidelines strictly:",
-            "1.  **Imports:** The script must begin with `from manim import *`.",
-            "2.  **Class Definition:** Define a single scene class named 'GeneratedScene' that inherits from `manim.Scene`.",
-            "3.  **`construct` Method:** All animation logic must be inside the `construct(self)` method.",
-            "4.  **Simplicity and Clarity:** The animation should visually represent the educational script. Use simple, clear, and standard Manim objects and animations (e.g., `Create`, `Write`, `Transform`, `FadeIn`, `FadeOut`).",
-            "5.  **Compatibility:** The code must be compatible with the latest version of Manim Community Edition.",
-            "6.  **Self-Contained:** The output must be a single block of Python code, ready to be saved to a .py file.",
-            "7.  **No External Dependencies:** Do not use any libraries other than Manim.",
-            "8.  **Text and Formulas:** Use `Text` for general text and `MathTex` for mathematical formulas. Ensure the text is readable and not too long for the screen.",
-            "9.  **Pacing:** Use `self.wait()` to pause between animations, allowing the viewer to absorb the information.",
-            "10. **Scene Management:** Clear the scene with `self.play(FadeOut(*self.mobjects))` before adding new, unrelated elements to avoid clutter.",
-            "\n---\n",
-            "Educational Script to Animate:",
-            educational_script,
-            "\n---\n",
-            "Now, generate the complete Manim script for the 'GeneratedScene'.",
+            "The script should visually represent the explanation. Use simple and clear animations.",
+            "The output should be a single block of Python code, ready to be saved to a .py file.",
+            "Ensure the scene class is named 'GeneratedScene'.",
+            "Here is the script:",
+            educational_script
         ]
         response = model.generate_content(manim_prompt)
         manim_code = response.text.strip()
@@ -365,28 +287,56 @@ async def generate_full_animation_ws(websocket: WebSocket):
             manim_code = manim_code[:-3]
 
         # Step 3: Save the Manim code
-        script_file_name = f"generated_{run_id}.py"
+        script_file_name = f"generated_{uuid.uuid4().hex[:8]}.py"
         script_path = os.path.join(project_path, "animations", script_file_name)
         with open(script_path, "w") as f:
             f.write(manim_code)
 
         await websocket.send_text(json.dumps({"status": "progress", "stage": "TTS Generation", "message": "Generating audio for the script..."}))
 
-        # Step 4: Generate TTS audio
-        audio_path = os.path.join(output_dir, "audio.mp3")
-        tts_success = await generate_gemini_tts(educational_script, audio_path, websocket)
-        if not tts_success:
-            return
+        # Step 4: Generate TTS audio using Gemini TTS API
+        await websocket.send_text(json.dumps({"status": "progress", "stage": "TTS Generation", "message": "Generating audio using Gemini TTS..."}))
+        try:
+            audio_file_name = f"generated_{uuid.uuid4().hex[:8]}.mp3"
+            audio_path = os.path.join(project_path, "output", audio_file_name)
+
+            # Use Gemini TTS model for audio output with correct parameters
+            tts_model = genai.GenerativeModel('gemini-2.5-flash-exp')
+            tts_response = tts_model.generate_content(
+                educational_script,
+                response_mime_types=["audio/mpeg"]
+            )
+            
+            # Save the audio content to file
+            if tts_response.candidates and len(tts_response.candidates) > 0:
+                candidate = tts_response.candidates[0]
+                if candidate.content and len(candidate.content.parts) > 0:
+                    audio_data = candidate.content.parts[0].inline_data.data
+                    with open(audio_path, "wb") as audio_file:
+                        audio_file.write(audio_data)
+                    await websocket.send_text(json.dumps({"status": "progress", "stage": "TTS Generation", "message": "Audio saved successfully using Gemini TTS."}))
+                else:
+                    raise Exception("No audio data in response")
+            else:
+                raise Exception("No candidates in TTS response")
+                
+        except Exception as e:
+            await websocket.send_text(json.dumps({"status": "error", "stage": "TTS Generation", "message": f"Gemini TTS failed: {str(e)}. Continuing without audio..."}))
+            # Continue without audio instead of failing completely
+            audio_path = None
 
         await websocket.send_text(json.dumps({"status": "progress", "stage": "Animation Execution", "message": "Running Manim to create the video..."}))
 
         # Step 5: Execute the animation
-        video_path = os.path.join(output_dir, "video_no_audio.mp4")
+        output_dir = os.path.join(project_path, "output", str(uuid.uuid4()))
+        os.makedirs(output_dir, exist_ok=True)
+        video_path = os.path.join(output_dir, "animation.mp4")
+
         cmd = [
-            "manim", "render",
-            script_path, "GeneratedScene",
-            "--quality", "m",
-            "--output_file", video_path
+            "python3", "-m", "manim",
+            "-qm",  # Medium quality
+            "--output_file", video_path,
+            script_path, "GeneratedScene"
         ]
 
         process = await asyncio.create_subprocess_exec(
@@ -400,56 +350,68 @@ async def generate_full_animation_ws(websocket: WebSocket):
                 line = await stream.readline()
                 if not line:
                     break
-                await websocket.send_text(json.dumps({"status": "progress", "stage": "Manim Log", "message": line.decode().strip()}))
+                await websocket.send_text(json.dumps({"status": "progress", "stage": "Manim Log", "message": line.decode()}))
 
         await asyncio.gather(
             stream_output(process.stdout, "stdout"),
             stream_output(process.stderr, "stderr")
         )
+
         await process.wait()
 
-        if process.returncode != 0:
-            await websocket.send_text(json.dumps({"status": "error", "message": "Manim rendering failed. Check the log for details."}))
-            return
-
-        await websocket.send_text(json.dumps({"status": "progress", "stage": "Audio/Video Merge", "message": "Merging audio and video..."}))
-
-        # Step 6: Merge audio and video
-        final_video_path = os.path.join(output_dir, "final_animation.mp4")
-        merge_cmd = [
-            "ffmpeg",
-            "-i", video_path,
-            "-i", audio_path,
-            "-c:v", "copy",
-            "-c:a", "aac",
-            final_video_path
-        ]
+        # Step 6: Merge audio and video (only if audio was generated successfully)
+        final_video_path = video_path  # Default to video-only
         
-        merge_process = await asyncio.create_subprocess_exec(
-            *merge_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        
-        merge_stdout, merge_stderr = await merge_process.communicate()
-
-        if merge_process.returncode != 0:
-            error_message = merge_stderr.decode() if merge_stderr else "Unknown ffmpeg error"
-            await websocket.send_text(json.dumps({"status": "error", "message": f"Failed to merge audio and video: {error_message}"}))
-            return
+        if audio_path and os.path.exists(audio_path):
+            await websocket.send_text(json.dumps({"status": "progress", "stage": "Audio/Video Merge", "message": "Merging audio and video..."}))
+            
+            final_video_path = os.path.join(output_dir, "final_animation.mp4")
+            merge_cmd = [
+                "ffmpeg",
+                "-i", video_path,
+                "-i", audio_path,
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-strict", "experimental",
+                "-y",  # Overwrite output files without asking
+                final_video_path
+            ]
+            
+            try:
+                merge_process = await asyncio.create_subprocess_exec(
+                    *merge_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                
+                await merge_process.wait()
+                
+                if merge_process.returncode != 0:
+                    # If merge fails, use video-only
+                    final_video_path = video_path
+                    await websocket.send_text(json.dumps({"status": "progress", "stage": "Audio/Video Merge", "message": "Audio merge failed, using video-only output."}))
+            except Exception as e:
+                # If merge fails, use video-only
+                final_video_path = video_path
+                await websocket.send_text(json.dumps({"status": "progress", "stage": "Audio/Video Merge", "message": f"Audio merge failed: {str(e)}, using video-only output."}))
 
         # Step 7: Find and return the output file
+        output_file = None
         if os.path.exists(final_video_path):
-            output_file_url = f"/projects/{project_name}/output/{run_id}/final_animation.mp4"
+            relative_path = os.path.relpath(final_video_path, PROJECTS_BASE_DIR)
+            output_file = f"/projects/{relative_path}"
+        
+        if output_file:
             await websocket.send_text(json.dumps({
                 "status": "completed",
-                "output_file": output_file_url
+                "output_file": output_file
             }))
         else:
             await websocket.send_text(json.dumps({
                 "status": "error",
                 "message": "Animation file not found after execution."
             }))
+
     except Exception as e:
         await websocket.send_text(json.dumps({"status": "error", "message": str(e)}))
     finally:
@@ -458,4 +420,3 @@ async def generate_full_animation_ws(websocket: WebSocket):
 
 mcp = FastApiMCP(app)
 mcp.mount()
-
