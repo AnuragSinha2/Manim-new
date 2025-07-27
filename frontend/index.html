@@ -4,25 +4,77 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manim AI Explainer</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <div class="container">
-        <h1>Manim AI Explainer</h1>
-        <p>Enter a topic, and let AI create an animated explanation for you.</p>
-        
-        <div class="form-group">
-            <textarea id="topic-input" placeholder="e.g., 'Explain the Pythagorean theorem'"></textarea>
-            <button id="generate-animation-btn">Generate Animation</button>
-        </div>
+        <header>
+            <h1><i class="fas fa-magic"></i> Manim AI Explainer</h1>
+            <p>Your personal AI animation assistant. Enter any topic and watch the magic happen.</p>
+        </header>
 
-        <div class="output-section">
-            <h3>Progress</h3>
-            <pre id="output-log"></pre>
-            <div id="animation-output"></div>
-        </div>
+        <main>
+            <div class="input-section">
+                <textarea id="topic-input" placeholder="e.g., 'Explain the Pythagorean theorem'"></textarea>
+                <div class="controls">
+                    <div class="select-wrapper">
+                        <i class="fas fa-film"></i>
+                        <select id="quality-select">
+                            <option value="low_quality">Low (480p)</option>
+                            <option value="medium_quality">Medium (720p)</option>
+                            <option value="high_quality">High (1080p)</option>
+                            <option value="production_quality">4K</option>
+                        </select>
+                    </div>
+                    <div class="select-wrapper">
+                        <i class="fas fa-microphone-alt"></i>
+                        <select id="voice-select">
+                            <option value="Puck">Puck</option>
+                            <option value="Charon">Charon</option>
+                            <option value="Kore">Kore</option>
+                            <option value="Fenrir">Fenrir</option>
+                        </select>
+                    </div>
+                    <button id="generate-animation-btn"><i class="fas fa-play"></i> Generate</button>
+                    <button id="stop-generation-btn" class="hidden"><i class="fas fa-stop"></i> Stop</button>
+                </div>
+            </div>
+
+            <div class="output-section hidden">
+                <div class="tabs">
+                    <button class="tab-link active" data-tab="animation">Animation</button>
+                    <button class="tab-link" data-tab="script">Script</button>
+                    <button class="tab-link" data-tab="narration">Narration</button>
+                    <button class="tab-link" data-tab="logs">Logs</button>
+                </div>
+
+                <div id="animation-tab" class="tab-content active">
+                    <div id="animation-output"></div>
+                    <div class="status-overlay hidden">
+                        <div class="spinner"></div>
+                        <p id="status-text"></p>
+                    </div>
+                </div>
+                <div id="script-tab" class="tab-content">
+                    <pre id="script-output"></pre>
+                    <button id="download-script-btn" class="download-btn hidden"><i class="fas fa-download"></i> Download Script</button>
+                </div>
+                <div id="narration-tab" class="tab-content">
+                    <div id="audio-player-container" class="hidden">
+                        <h4>Listen to Narration</h4>
+                        <audio id="audio-player" controls src=""></audio>
+                    </div>
+                    <pre id="narration-output"></pre>
+                    <button id="download-narration-btn" class="download-btn hidden"><i class="fas fa-download"></i> Download Narration</button>
+                </div>
+                <div id="logs-tab" class="tab-content">
+                    <pre id="output-log"></pre>
+                </div>
+            </div>
+        </main>
     </div>
-
-    <script src="script.js"></script>
+    <script src="/static/script.js"></script>
 </body>
 </html>

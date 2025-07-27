@@ -1,22 +1,72 @@
+# docker-compose.yml - Enhanced with TTS support
+
+version: '3.8'
+
 services:
-  manim-api:
-    build: .
-    container_name: manim_api_container
-    dns:
-      - 8.8.8.8
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./projects:/manim/projects
-    restart: unless-stopped
-    environment:
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
   manim:
     build: .
-    container_name: manim_cli_container
+    container_name: manim-cli
     volumes:
-      - ./projects:/manim/projects
-    working_dir: /manim
-    # Example command to render a scene
-    command: ["-pql", "projects/Reflection of light/animations/laws_of_reflection.py", "LawsOfReflection"]
-    entrypoint: ["manim"] 
+      - ./animations:/manim/animations
+      - ./media:/manim/media
+      - ./temp:/manim/temp
+      - ./uploads:/manim/uploads
+      - ./tts_output:/manim/tts_output
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PYTHONPATH=/manim
+    profiles:
+      - cli
+    command: ["tail", "-f", "/dev/null"]  # Keep container running for CLI usage
+
+  manim-api:
+    build: .
+    container_name: manim-tts-api
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./animations:/manim/animations
+      - ./output:/manim/output
+      - ./temp:/manim/temp
+      - ./uploads:/manim/uploads
+      - ./tts_output:/manim/tts_output
+      - ./media:/manim/media
+      - ./frontend:/manim/frontend
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PYTHONPATH=/manim
+      - MANIM_LOG_LEVEL=INFO
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
+
+  # Optional: Redis for caching and background tasks
+  redis:
+    image: redis:7-alpine
+    container_name: manim-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    profiles:
+      - cache
+
+  # Optional: Database for storing animation metadata
+  postgres:
+    image: postgres:15-alpine
+    container_name: manim-db
+    environment:
+      - POSTGRES_DB=manim_db
+      - POSTGRES_USER=manim_user
+      - POSTGRES_PASSWORD=manim_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    profiles:
+      - database
+
+volumes:
+  redis_data:
+  postgres_data:
+
+networks:
+  default:
+    name: manim-network

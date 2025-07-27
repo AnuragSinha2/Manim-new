@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+python-multipart
+manim
+pydantic
+google-generativeai
+librosa
+soundfile
+pygame
+pydub
+asyncio-mqtt
+websockets

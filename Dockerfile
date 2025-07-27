@@ -1,61 +1,65 @@
-FROM ubuntu:22.04
+# Dockerfile - Enhanced with TTS support
 
-# Set environment variables to avoid interactive prompts
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
+FROM python:3.11-slim
 
-# Install required dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    python3 \
-    python3-dev \
-    python3-pip \
-    pkg-config \
+    ffmpeg \
     libcairo2-dev \
     libpango1.0-dev \
-    ffmpeg \
-    curl \
+    pkg-config \
+    python3-dev \
+    libgirepository1.0-dev \
+    libportaudio2 \
+    libasound-dev \
+    build-essential \
     git \
-    meson \
-    ninja-build \
-    python3-setuptools \
-    python3-wheel \
-    && apt-get clean \
+    wget \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install minimal LaTeX packages instead of texlive-full
+# Install LaTeX (minimal)
 RUN apt-get update && apt-get install -y \
     texlive-latex-base \
     texlive-latex-extra \
     texlive-fonts-recommended \
     texlive-fonts-extra \
-    texlive-science \
-    texlive-xetex \
-    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Create working directory
+# Set working directory
 WORKDIR /manim
 
-# Install Manim directly with pip instead of using UV
-RUN pip install --upgrade pip \
-    && pip install wheel setuptools \
-    && pip install pycairo \
-    && pip install manim \
-    && python3 -c "import manim; print(f'Manim {manim.__version__} installed successfully')"
+# Copy requirements first for better caching
+COPY requirements.txt .
 
-# Install FastAPI, uvicorn and fastapi-mcp for API service
-RUN pip install fastapi uvicorn pydantic python-multipart fastapi-mcp>=0.3.0 websockets --upgrade google-generativeai httpx
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the API application
-COPY ./app /manim/app
-COPY ./frontend /manim/frontend
+# Create necessary directories
+RUN mkdir -p /manim/animations \
+             /manim/output \
+             /manim/temp \
+             /manim/uploads \
+             /manim/tts_output \
+             /manim/media \
+             /manim/app
 
-# Expose the API port
+# Copy application files
+COPY app/ ./app/
+COPY frontend/ ./frontend/
+COPY animations/ ./animations/
+COPY docker-entrypoint.sh /usr/local/bin/
+
+# Make entrypoint executable
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Set environment variables
+ENV PYTHONPATH=/manim
+ENV MANIMGL_LOG_DIR=/manim/logs
+
+# Expose port for API
 EXPOSE 8000
 
-# Change entrypoint to run the FastAPI app
-ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0"]
-
-# Default command
-CMD ["--port", "8000"] 
+# Default entrypoint
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
