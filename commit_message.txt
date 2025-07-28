@@ -1,0 +1,3 @@
+feat: Implement robust self-healing and error handling
+
+Refactors the core application logic to introduce a resilient, multi-step animation generation pipeline. This includes a self-healing loop for Manim rendering errors, a robust JSON parser for AI responses, a WebSocket-based stop mechanism, and a corrected Docker Compose port mapping.

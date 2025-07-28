@@ -23,7 +23,7 @@ services:
     build: .
     container_name: manim-tts-api
     ports:
-      - "8001:8000"
+      - "8000:8000"
     volumes:
       - ./animations:/manim/animations
       - ./output:/manim/output
