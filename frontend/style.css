@@ -252,3 +252,41 @@ pre {
 .hidden {
     display: none !important;
 }
+
+.image-container {
+    margin-bottom: 20px;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.image-container h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: var(--primary-color);
+}
+
+.image-card {
+    display: inline-block;
+    margin-right: 15px;
+    margin-bottom: 15px;
+    text-align: center;
+    max-width: 150px;
+    vertical-align: top;
+}
+
+.image-card img {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    margin-bottom: 5px;
+}
+
+.image-card p {
+    font-size: 0.9rem;
+    color: #666;
+    margin: 0;
+}

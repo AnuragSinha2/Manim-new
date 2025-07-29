@@ -25,6 +25,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
+      - "C:/Users/Anurag/AppData/Roaming/gcloud:/root/.config/gcloud"
       - ./animations:/manim/animations
       - ./output:/manim/output
       - ./temp:/manim/temp
@@ -33,6 +34,7 @@ services:
       - ./media:/manim/media
       - ./frontend:/manim/frontend
     environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - PYTHONPATH=/manim
       - MANIM_LOG_LEVEL=INFO

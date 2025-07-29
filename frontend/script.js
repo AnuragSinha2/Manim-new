@@ -4,39 +4,57 @@ document.addEventListener('DOMContentLoaded', () => {
     const stopBtn = document.getElementById('stop-generation-btn');
     const qualitySelect = document.getElementById('quality-select');
     const voiceSelect = document.getElementById('voice-select');
+    const modelSelect = document.getElementById('model-select');
     
     const outputSection = document.querySelector('.output-section');
     const outputLog = document.getElementById('output-log');
     const animationOutput = document.getElementById('animation-output');
+    const imageComponentsOutput = document.getElementById('image-components-output');
     const scriptOutput = document.getElementById('script-output');
     const narrationOutput = document.getElementById('narration-output');
-    
-    const downloadScriptBtn = document.getElementById('download-script-btn');
-    const downloadNarrationBtn = document.getElementById('download-narration-btn');
-    
     const audioPlayerContainer = document.getElementById('audio-player-container');
     const audioPlayer = document.getElementById('audio-player');
-    
+    const downloadScriptBtn = document.getElementById('download-script-btn');
+    const downloadNarrationBtn = document.getElementById('download-narration-btn');
     const statusOverlay = document.querySelector('.status-overlay');
     const statusText = document.getElementById('status-text');
-
     const tabs = document.querySelectorAll('.tab-link');
     const tabContents = document.querySelectorAll('.tab-content');
 
-    let socket = null;
+    let socket;
 
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
             tabs.forEach(item => item.classList.remove('active'));
             tab.classList.add('active');
-
-            const targetTab = document.querySelector(`#${tab.dataset.tab}-tab`);
+            const target = document.getElementById(tab.dataset.tab + '-tab');
             tabContents.forEach(content => content.classList.remove('active'));
-            targetTab.classList.add('active');
+            target.classList.add('active');
         });
     });
 
-    function generateAnimation() {
+    function setControlsDisabled(disabled) {
+        topicInput.disabled = disabled;
+        generateBtn.disabled = disabled;
+        qualitySelect.disabled = disabled;
+        voiceSelect.disabled = disabled;
+        modelSelect.disabled = disabled;
+        stopBtn.classList.toggle('hidden', !disabled);
+        generateBtn.classList.toggle('hidden', disabled);
+    }
+
+    function clearOutputs() {
+        outputLog.textContent = '';
+        scriptOutput.textContent = '';
+        narrationOutput.textContent = '';
+        animationOutput.innerHTML = '';
+        imageComponentsOutput.innerHTML = '';
+        audioPlayerContainer.classList.add('hidden');
+        downloadScriptBtn.classList.add('hidden');
+        downloadNarrationBtn.classList.add('hidden');
+    }
+
+    generateBtn.addEventListener('click', () => {
         const topic = topicInput.value.trim();
         if (!topic) {
             alert('Please enter a topic.');
@@ -45,113 +63,114 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const quality = qualitySelect.value;
         const voice = voiceSelect.value;
+        const model = modelSelect.value;
 
+        // Disable controls
+        setControlsDisabled(true);
+
+        // Show output section
         outputSection.classList.remove('hidden');
         statusOverlay.classList.remove('hidden');
-        statusText.textContent = 'Connecting to server...';
         
-        outputLog.textContent = '';
-        scriptOutput.textContent = '';
-        narrationOutput.textContent = '';
-        animationOutput.innerHTML = '';
-        audioPlayerContainer.classList.add('hidden');
-        audioPlayer.src = '';
-        downloadScriptBtn.classList.add('hidden');
-        downloadNarrationBtn.classList.add('hidden');
-        
-        generateBtn.classList.add('hidden');
-        stopBtn.classList.remove('hidden');
+        // Clear previous outputs
+        clearOutputs();
 
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        socket = new WebSocket(`${wsProtocol}//${window.location.host}/ws/generate-full-animation`);
+        // Open WebSocket connection
+        socket = new WebSocket(`ws://${window.location.host}/ws/generate-full-animation`);
 
         socket.onopen = () => {
-            logMessage('Connection established. Sending topic to AI...');
-            statusText.textContent = 'Generating script with AI...';
-            socket.send(JSON.stringify({ type: 'start', topic: topic, quality: quality, voice: voice }));
+            console.log("WebSocket connection established.");
+            socket.send(JSON.stringify({ type: "start", topic, quality, voice, model }));
         };
 
         socket.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            
-            if (data.status === 'progress') {
-                logMessage(`[${data.stage}] ${data.message}`);
-                statusText.textContent = `${data.stage}...`;
-            } else if (data.status === 'completed') {
-                logMessage('Animation completed!');
-                statusOverlay.classList.add('hidden');
-                if (data.output_file) {
-                    const videoEl = document.createElement('video');
-                    videoEl.src = data.output_file; 
-                    videoEl.controls = true;
-                    videoEl.playsInline = true;
-                    animationOutput.innerHTML = '';
-                    animationOutput.appendChild(videoEl);
-                }
-                socket.close();
-            } else if (data.status === 'error') {
-                logMessage(`ERROR: ${data.message}`);
-                statusText.textContent = `Error: ${data.message}`;
-                socket.close();
+            console.log("Received data:", data);
+
+            if (data.status === 'progress' || data.status === 'error' || data.status === 'completed') {
+                const stage = data.stage ? `[${data.stage}] ` : '';
+                const message = `${stage}${data.message}\n`;
+                outputLog.textContent += message;
+                statusText.textContent = data.message;
             }
 
+            if (data.status === 'error' || data.status === 'completed') {
+                setControlsDisabled(false);
+                if (data.status === 'completed') {
+                    statusOverlay.classList.add('hidden');
+                }
+            }
+
+            if (data.narration) {
+                narrationOutput.textContent = data.narration;
+                downloadNarrationBtn.classList.remove('hidden');
+            }
             if (data.script) {
                 scriptOutput.textContent = data.script;
                 downloadScriptBtn.classList.remove('hidden');
             }
-            if (data.narration) {
-                narrationOutput.textContent = data.narration;
-                downloadNarrationBtn.classList.remove('hidden');
+            if (data.output_file) {
+                animationOutput.innerHTML = `<video controls src="${data.output_file}" type="video/mp4"></video>`;
             }
             if (data.tts_audio_url) {
                 audioPlayer.src = data.tts_audio_url;
                 audioPlayerContainer.classList.remove('hidden');
             }
-        };
-
-        socket.onclose = () => {
-            logMessage('Connection closed.');
-            generateBtn.classList.remove('hidden');
-            stopBtn.classList.add('hidden');
-            if (!statusText.textContent.startsWith('Error')) {
-                statusText.textContent = 'Finished';
+            if (data.image_components) {
+                imageComponentsOutput.innerHTML = '<h4>Generated Image Components:</h4>';
+                data.image_components.forEach(img => {
+                    const imgCard = document.createElement('div');
+                    imgCard.className = 'image-card';
+                    
+                    const imgEl = document.createElement('img');
+                    imgEl.src = img.path;
+                    imgEl.alt = img.description;
+                    
+                    const pEl = document.createElement('p');
+                    pEl.textContent = img.description;
+                    
+                    imgCard.appendChild(imgEl);
+                    imgCard.appendChild(pEl);
+                    imageComponentsOutput.appendChild(imgCard);
+                });
             }
         };
 
-        socket.onerror = (event) => {
-            console.error("WebSocket error:", event);
-            logMessage('WebSocket Error: Connection failed. Please check the server logs.');
-            statusText.textContent = 'Connection Error';
+        socket.onclose = () => {
+            console.log("WebSocket connection closed.");
+            setControlsDisabled(false);
         };
-    }
 
-    function stopGeneration() {
-        if (socket) {
-            socket.send(JSON.stringify({ type: 'stop' }));
-        }
-    }
-
-    function logMessage(message) {
-        outputLog.textContent += message + '\n';
-        outputLog.scrollTop = outputLog.scrollHeight;
-    }
-
-    function downloadFile(filename, content) {
-        const element = document.createElement('a');
-        element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(content));
-        element.setAttribute('download', filename);
-        element.style.display = 'none';
-        document.body.appendChild(element);
-        element.click();
-        document.body.removeChild(element);
-    }
-
-    generateBtn.addEventListener('click', generateAnimation);
-    stopBtn.addEventListener('click', stopGeneration);
-    downloadScriptBtn.addEventListener('click', () => {
-        downloadFile('script.py', scriptOutput.textContent);
+        socket.onerror = (error) => {
+            console.error("WebSocket error:", error);
+            outputLog.textContent += "A connection error occurred. Please check the server logs.\n";
+            setControlsDisabled(false);
+        };
     });
+
+    stopBtn.addEventListener('click', () => {
+        if (socket) {
+            socket.send(JSON.stringify({ type: "stop" }));
+        }
+    });
+
+    downloadScriptBtn.addEventListener('click', () => {
+        const blob = new Blob([scriptOutput.textContent], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'manim_script.py';
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+
     downloadNarrationBtn.addEventListener('click', () => {
-        downloadFile('narration.txt', narrationOutput.textContent);
+        const blob = new Blob([narrationOutput.textContent], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'narration.txt';
+        a.click();
+        URL.revokeObjectURL(url);
     });
 });

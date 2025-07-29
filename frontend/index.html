@@ -20,6 +20,13 @@
                 <textarea id="topic-input" placeholder="e.g., 'Explain the Pythagorean theorem'"></textarea>
                 <div class="controls">
                     <div class="select-wrapper">
+                        <i class="fas fa-cogs"></i>
+                        <select id="model-select">
+                            <option value="gemini">Gemini 2.5 Pro</option>
+                            <option value="claude">Claude 4 Sonnet</option>
+                        </select>
+                    </div>
+                    <div class="select-wrapper">
                         <i class="fas fa-film"></i>
                         <select id="quality-select">
                             <option value="low_quality">Low (480p)</option>
@@ -51,6 +58,7 @@
                 </div>
 
                 <div id="animation-tab" class="tab-content active">
+                    <div id="image-components-output" class="image-container"></div>
                     <div id="animation-output"></div>
                     <div class="status-overlay hidden">
                         <div class="spinner"></div>

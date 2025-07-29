@@ -10,3 +10,5 @@ pygame
 pydub
 asyncio-mqtt
 websockets
+Pillow
+google-cloud-aiplatform\"requests\" 

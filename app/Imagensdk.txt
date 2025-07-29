@@ -1,0 +1,33 @@
+# To run this code you need to install the following dependencies:
+# pip install google-genai
+
+from google import genai
+import os
+
+def generate():
+    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+
+    result = client.models.generate_images(
+        model="models/imagen-4.0-generate-preview-06-06",
+        prompt="""INSERT_INPUT_HERE""",
+        config=dict(
+            number_of_images=1,
+            output_mime_type="image/jpeg",
+            person_generation="ALLOW_ADULT",
+            aspect_ratio="1:1",
+        ),
+    )
+
+    if not result.generated_images:
+        print("No images generated.")
+        return
+
+    if len(result.generated_images) != 1:
+        print("Number of images generated does not match the requested number.")
+
+    for n, generated_image in enumerate(result.generated_images):
+        generated_image.image.save(f"generated_image_{n}.jpg")
+
+
+if __name__ == "__main__":
+    generate()
