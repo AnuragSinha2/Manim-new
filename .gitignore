@@ -32,3 +32,4 @@ wheels/
 .env.production.local 
 temp/
 output/
+tts_output/
