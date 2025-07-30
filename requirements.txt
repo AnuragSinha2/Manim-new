@@ -1,14 +1,42 @@
-fastapi
-uvicorn
-python-multipart
+# requirements.txt - Updated to latest stable versions
+
+# Core Manim and web framework
 manim
-pydantic
+fastapi[all]
+
+# TTS and AI
 google-generativeai
+google-cloud-texttospeech
+google-auth
+
+# Audio processing
 librosa
 soundfile
 pygame
 pydub
-asyncio-mqtt
-websockets
+pyaudio
+
+# Data processing and utilities
+numpy
+scipy
+pandas
+pydantic
+aiofiles
+httpx
+
+# Image and video processing
 Pillow
-google-cloud-aiplatform\"requests\" 
+opencv-python
+matplotlib
+
+# Development and testing
+pytest
+pytest-asyncio
+black
+flake8
+
+# Additional utilities
+pathlib
+json-logging
+python-dotenv
+typing-extensions

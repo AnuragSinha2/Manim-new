@@ -30,15 +30,6 @@ mkdir -p /manim/tts_output
 mkdir -p /manim/media
 mkdir -p /manim/logs
 
-# Set permissions
-chmod 755 /manim/animations
-chmod 755 /manim/output
-chmod 755 /manim/temp
-chmod 755 /manim/uploads
-chmod 755 /manim/tts_output
-chmod 755 /manim/media
-chmod 755 /manim/logs
-
 echo -e "${GREEN}✅ Directories created and permissions set${NC}"
 
 # Test Gemini API connection

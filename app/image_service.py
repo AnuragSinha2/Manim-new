@@ -17,30 +17,26 @@ async def generate_image(prompt: str, output_path: Path, transparent_background:
     
     try:
         # Configure the model for image generation
-        client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+        image_model = genai.GenerativeModel("'imagen-4'")
 
         # The image generation API in the GenerativeModel is synchronous,
-        # so we run it in a separate thread to avoid blocking the event loop.
+        # so we run it in a separate thread to avoid blocking the event loop.Res
         result = await asyncio.to_thread(
-            client.images.generate,
-            model="models/imagen-4.0-generate-preview-06-06",
-            prompt=prompt,
-            config=dict(
-                number_of_images=1,
-                output_mime_type="image/png" if transparent_background else "image/jpeg",
-                person_generation="ALLOW_ADULT",
-                aspect_ratio="1:1",
+            image_model.generate_content,
+            contents=prompt,
+            generation_config=dict(
+                candidate_count=1
             ),
         )
 
-        if not result.generated_images:
+        if not result.candidates:
             raise Exception("No image candidates were returned by the API.")
 
         # Extract the first image from the response
-        generated_image = result.generated_images[0]
+        image_part = result.candidates[0].content.parts[0]
         
-        # The image data is in generated_image.image.getvalue()
-        image_data = generated_image.image.getvalue()
+        # The image data is in image_part.inline_data.data
+        image_data = image_part.inline_data.data
         
         # Ensure the output directory exists
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -56,7 +52,6 @@ async def generate_image(prompt: str, output_path: Path, transparent_background:
         # As a fallback, create a placeholder error image
         create_error_image(prompt, output_path)
         raise  # Re-raise the exception to be handled by the calling agent
-
 
 def create_error_image(prompt: str, output_path: Path):
     """Creates a placeholder image to indicate an error during generation."""

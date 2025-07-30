@@ -14,13 +14,14 @@ services:
       - ./tts_output:/manim/tts_output
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - PYTHONPATH=/manim
+      - PYTHONPATH=/manim:/manim/app
     profiles:
       - cli
     command: ["tail", "-f", "/dev/null"]  # Keep container running for CLI usage
 
   manim-api:
     build: .
+    user: root
     container_name: manim-tts-api
     ports:
       - "8000:8000"
@@ -36,7 +37,7 @@ services:
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - PYTHONPATH=/manim
+      - PYTHONPATH=/manim:/manim/app
       - MANIM_LOG_LEVEL=INFO
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     restart: unless-stopped

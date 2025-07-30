@@ -1,65 +1,79 @@
-# Dockerfile - Enhanced with TTS support
+# Dockerfile for Manim CE - Optimized for Security and Efficiency
 
-FROM python:3.11-slim
+# Use a stable, recent Python base image
+FROM python:3.12-slim as base
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Set environment variables to prevent interactive prompts during build
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+# --- System Dependencies ---
+# Install all necessary system packages in a single layer
+# This includes gosu for user switching, ffmpeg, graphics libraries, and a minimal TeX Live
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    # User switching tool
+    gosu \
+    # C compiler and build tools
+    build-essential \
+    # Video/Audio processing
     ffmpeg \
+    libportaudio2 \
+    portaudio19-dev \
+    libasound-dev \
+    # Manim's core graphics and text rendering dependencies
     libcairo2-dev \
     libpango1.0-dev \
-    pkg-config \
-    python3-dev \
-    libgirepository1.0-dev \
-    libportaudio2 \
-    libasound-dev \
-    build-essential \
-    git \
-    wget \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install LaTeX (minimal)
-RUN apt-get update && apt-get install -y \
+    # LaTeX for mathematical text
     texlive-latex-base \
     texlive-latex-extra \
     texlive-fonts-recommended \
     texlive-fonts-extra \
-    && rm -rf /var/lib/apt/lists/*
+    dvisvgm \
+    # Git for version control
+    git \
+    # Cleanup
+    && apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# --- Application Stage ---
+FROM base as final
+
+# Create a non-root user to run the application for security
+# Using a static UID/GID is good practice for consistency
+ARG UID=1001
+ARG GID=1001
+RUN groupadd -g $GID manimgroup && \
+    useradd -u $UID -g manimgroup -m -s /bin/bash manimuser
+
+# Set the working directory
 WORKDIR /manim
 
-# Copy requirements first for better caching
-COPY requirements.txt .
+# Copy application requirements first to leverage Docker cache
+COPY --chown=manimuser:manimgroup requirements.txt .
 
-# Install Python dependencies
+# Install Python dependencies as the non-root user
+# Using --no-cache-dir keeps the image size down
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create necessary directories
-RUN mkdir -p /manim/animations \
-             /manim/output \
-             /manim/temp \
-             /manim/uploads \
-             /manim/tts_output \
-             /manim/media \
-             /manim/app
+# Add the user's local bin directory to the PATH
+ENV PATH="/home/manimuser/.local/bin:${PATH}"
 
-# Copy application files
-COPY app/ ./app/
-COPY frontend/ ./frontend/
-COPY animations/ ./animations/
-COPY docker-entrypoint.sh /usr/local/bin/
+# Create and set permissions for all necessary directories
+RUN mkdir -p animations media temp uploads tts_output output logs && \
+    chown -R manimuser:manimgroup animations media temp uploads tts_output output logs
 
-# Make entrypoint executable
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# Copy the rest of the application code
+COPY --chown=manimuser:manimgroup . .
 
-# Set environment variables
-ENV PYTHONPATH=/manim
-ENV MANIMGL_LOG_DIR=/manim/logs
+# Switch to the non-root user
+USER manimuser
 
-# Expose port for API
+# Expose the port the application will run on
 EXPOSE 8000
 
-# Default entrypoint
-ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Set the entrypoint script
+ENTRYPOINT ["/manim/docker-entrypoint.sh"]
+
+# Set the default command to run the application
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
