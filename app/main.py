@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Manim Animation & TTS API",
     description="Create mathematical animations with synchronized voice-over using Gemini 2.5 Flash TTS",
-    version="2.4.0"
+    version="2.5.0"
 )
 
 app.add_middleware(
@@ -40,7 +40,6 @@ app.add_middleware(
 try:
     GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
     tts_service = GeminiTTSService(GEMINI_API_KEY)
-    # Configure the generative AI models
     genai.configure(api_key=GEMINI_API_KEY)
     generation_model = genai.GenerativeModel('gemini-2.5-pro')
     debug_model = genai.GenerativeModel('gemini-2.5-flash')
@@ -61,9 +60,48 @@ TTS_OUTPUT_DIR = BASE_DIR / "tts_output"
 for directory in [ANIMATIONS_DIR, OUTPUT_DIR, TEMP_DIR, UPLOADS_DIR, TTS_OUTPUT_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
+# --- Manim Layout Manager ---
+LAYOUT_MANAGER_CODE = """
+from manim import VGroup, UP, DOWN, LEFT, RIGHT
+
+class LayoutManager:
+    def __init__(self, scene):
+        self.scene = scene
+        self.objects = {}
+        self.regions = {
+            'TOP': UP * 3.5,
+            'CENTER': [0, 0, 0],
+            'BOTTOM': DOWN * 3.5,
+            'LEFT': LEFT * 6,
+            'RIGHT': RIGHT * 6,
+            'TOP_LEFT': UP * 3.5 + LEFT * 6,
+            'TOP_RIGHT': UP * 3.5 + RIGHT * 6,
+            'BOTTOM_LEFT': DOWN * 3.5 + LEFT * 6,
+            'BOTTOM_RIGHT': DOWN * 3.5 + RIGHT * 6,
+        }
+
+    def place(self, mobject, region, buff=0.5):
+        if region not in self.regions:
+            print(f"Warning: Region '{region}' not found. Placing at center.")
+            region = 'CENTER'
+        
+        mobject.move_to(self.regions[region])
+        self.objects[str(id(mobject))] = mobject
+        return mobject
+
+    def next_to(self, mobject, target_mobject, direction, buff=0.5):
+        mobject.next_to(target_mobject, direction, buff=buff)
+        self.objects[str(id(mobject))] = mobject
+        return mobject
+
+    def get_all_mobjects(self, except_list=None):
+        if except_list is None:
+            except_list = []
+        return [m for m in self.scene.mobjects if m not in except_list]
+"""
+
 # --- Custom Exceptions ---
 class ManimRenderingError(Exception):
-    """Custom exception for Manim rendering failures."""
     def __init__(self, message, error_log):
         super().__init__(message)
         self.error_log = error_log
@@ -89,335 +127,304 @@ class ConnectionManager:
         except Exception as e:
             logger.warning(f"Could not send to websocket: {e}")
 
-
     def assign_task(self, websocket: WebSocket, task: asyncio.Task):
         self.active_connections[websocket] = task
 
 manager = ConnectionManager()
 
+def clean_ai_response(raw_text: str) -> str:
+    raw_text = raw_text.replace('–', '-')
+    raw_text = raw_text.replace('“', '"')
+    raw_text = raw_text.replace('”', '"')
+    raw_text = raw_text.replace('‘', "'")
+    raw_text = raw_text.replace('’', "'")
+    return raw_text
 
-# --- Helper Functions ---
+# --- AI Agents ---
 async def send_progress(websocket: WebSocket, stage: str, message: str, status: str = "progress"):
     await manager.send_json(websocket, {"status": status, "stage": stage, "message": message})
 
-async def generate_ai_script_and_narration(topic: str, websocket: WebSocket) -> Optional[Dict]:
-    """Generate a Manim script, narration, and animation markers using an AI model."""
-    await send_progress(websocket, "AI Scripting", "AI is generating script, narration, and timing markers...")
-    
+async def narration_agent(topic: str, websocket: WebSocket) -> Optional[Dict]:
+    await send_progress(websocket, "AI Narrator", "Generating narration and timings...")
     prompt = f"""
-    You are an expert Manim animator and instructional designer. Your task is to generate a JSON object containing a Manim script, a corresponding narration, and a list of animation markers for a high-quality educational video about the topic: "{topic}".
+    You are an expert instructional designer. For the topic "{topic}", generate a JSON object with:
+    1.  `"narration"`: A clear, concise narration script.
+    2.  `"animation_markers"`: A list of dictionaries with "name" and cumulative "time" in seconds for key narration points.
 
-    The scene class in the script must be named: {topic.replace(" ", "")}
-
-    **Visual Best Practices (Follow these rules carefully):**
-    1.  **Screen Boundaries & Layout**: NEVER let any text or animation go off-screen. Avoid overlaps by using `.next_to()`, `.to_edge()`, etc.
-    2.  **Text Readability**: Use a clear font size hierarchy (e.g., Title=48, Body=32, Annotations=24).
-    3.  **Pacing**: Use `self.wait(n)` to give viewers time to process information.
-
-    **Output Format (Must be a single, raw JSON object):**
-    1.  `"script"`: A string containing the complete, runnable Python code for the Manim scene.
-    2.  `"narration"`: A string containing the clear, concise narration that matches the animation.
-    3.  `"animation_markers"`: A list of dictionaries, where each dictionary has a "name" (str) and a "time" (float, in seconds) corresponding to the start time of a key animation event in the script's timeline. The times should be cumulative.
-
-    **Example for "CircleToSquare":**
+    Example:
     {{
-        "script": "from manim import *\n\nclass CircleToSquare(Scene):\n    def construct(self):\n        title = Text(\"Circle to Square\", font_size=48).to_edge(UP)\n        self.play(Write(title))\n        self.wait(1)\n        circle = Circle().scale(2)\n        self.play(Create(circle))\n        self.wait(2)\n        square = Square().scale(2)\n        self.play(Transform(circle, square))\n        self.wait(2)",
-        "narration": "First, we display the title. A circle appears. After a moment, it transforms into a square.",
+        "narration": "The Pythagorean Theorem relates the sides of a right triangle. The formula is a squared plus b squared equals c squared.",
         "animation_markers": [
-            {{ "name": "Title Appears", "time": 0.0 }},
-            {{ "name": "Circle Appears", "time": 2.0 }},
-            {{ "name": "Square Transform", "time": 5.0 }}
+            {{"name": "Title", "time": 0.0}},
+            {{"name": "Formula", "time": 4.0}}
         ]
     }}
     """
-    
-    if not generation_model:
-        raise Exception("Generative model is not configured.")
-
-    try:
-        response = await generation_model.generate_content_async(prompt)
-        json_string = response.text.strip()
-        if "```json" in json_string:
-            json_string = json_string.split("```json\n")[1].split("```")[0]
-        
-        ai_content = json.loads(json_string)
-        
-        if "script" not in ai_content or "narration" not in ai_content or "animation_markers" not in ai_content:
-            raise Exception("AI did not return the expected JSON format with script, narration, and markers.")
-
-        await send_progress(websocket, "AI Scripting", "AI content generated successfully.")
-        return ai_content
-    except Exception as e:
-        logger.error(f"AI Scripting failed: {e}")
-        return {
-            "script": f"from manim import *\n\nclass {topic.replace(' ', '')}(Scene):\n    def construct(self):\n        self.add(Text('AI Script Generation Failed', color=RED))",
-            "narration": "I'm sorry, but the AI script generator failed.",
-            "animation_markers": []
-        }
-
-
-async def debug_manim_script(original_script: str, error_log: str, websocket: WebSocket) -> str:
-    """Uses Gemini 2.5 Flash to debug a Manim script."""
-    if not debug_model:
-        raise Exception("Debug model is not configured. Cannot fix script.")
-
-    await send_progress(websocket, "AI Debugging", "Manim script failed. Asking AI to fix it...")
-    
-    prompt = f"""
-    The following Manim script failed to render.
-
-    --- SCRIPT ---
-    {original_script}
-    --- END SCRIPT ---
-
-    Here is the error log from Manim:
-    --- ERROR LOG ---
-    {error_log}
-    --- END ERROR LOG ---
-
-    Please analyze the script and the error log, identify the mistake, and provide the corrected, complete Manim script.
-    Do not add any explanations, just output the raw, corrected Python code.
-    """
-    
+    if not debug_model: raise Exception("Debug model not configured.")
     try:
         response = await debug_model.generate_content_async(prompt)
-        fixed_script = response.text.strip()
+        cleaned_text = clean_ai_response(response.text)
+        json_string = cleaned_text.strip().split("```json\n")[1].split("```")[0]
+        ai_content = json.loads(json_string)
+        if "narration" not in ai_content or "animation_markers" not in ai_content:
+            raise Exception("AI did not return valid narration/markers.")
+        await send_progress(websocket, "AI Narrator", "Narration generated.")
+        return ai_content
+    except Exception as e:
+        logger.error(f"AI Narration failed: {e}")
+        return {"narration": "AI script generator failed.", "animation_markers": []}
+
+async def showrunner_agent(narration: str, animation_markers: list, websocket: WebSocket) -> list:
+    await send_progress(websocket, "AI Showrunner", "Designing visual scenes...")
+    scenes_with_text = []
+    narration_lines = [line.strip() for line in narration.split('.') if line.strip()]
+    for i, marker in enumerate(animation_markers):
+        scenes_with_text.append({
+            "scene_number": i + 1,
+            "marker_name": marker["name"],
+            "duration": (animation_markers[i+1]['time'] - marker['time']) if i + 1 < len(animation_markers) else 3.0,
+            "text": narration_lines[i] if i < len(narration_lines) else ""
+        })
+
+    prompt = f"""
+    You are a creative director. For each scene, provide `visual_instructions` and an optional `clear_screen` flag.
+    **CRITICAL**: Use the `layout` object for all positioning. Do not set positions manually.
+
+    **Available Layout Regions**: `TOP`, `CENTER`, `BOTTOM`, `LEFT`, `RIGHT`, `TOP_LEFT`, `TOP_RIGHT`, `BOTTOM_LEFT`, `BOTTOM_RIGHT`.
+    **Available Layout Methods**: `layout.place(mobject, 'REGION')`, `layout.next_to(mobject, target, DIRECTION)`.
+
+    **Scenes:**
+    ---
+    {json.dumps(scenes_with_text, indent=2)}
+    ---
+
+    **Output Format (JSON with a "scenes" key):**
+    {{
+      "scenes": [
+        {{
+          "scene_number": 1,
+          "visual_instructions": "Create a title object named 'title'. Use `layout.place(title, 'TOP')`. Animate with `Write`."
+        }},
+        {{
+          "scene_number": 2,
+          "clear_screen": true,
+          "visual_instructions": "Create a blue triangle named 'tri'. Use `layout.place(tri, 'CENTER')`..."
+        }}
+      ]
+    }}
+    """
+    if not debug_model: raise Exception("Debug model not configured.")
+    try:
+        response = await debug_model.generate_content_async(prompt)
+        cleaned_text = clean_ai_response(response.text)
+        json_string = cleaned_text.strip().split("```json\n")[1].split("```")[0]
+        showrunner_directions = json.loads(json_string)
+        if "scenes" not in showrunner_directions: raise Exception("Invalid showrunner format.")
         
-        if "```python" in fixed_script:
-            fixed_script = fixed_script.split("```python\n")[1].split("```")[0]
+        for i, scene in enumerate(scenes_with_visuals):
+            if i < len(showrunner_directions['scenes']):
+                scene_data = showrunner_directions['scenes'][i]
+                scene['visual_instructions'] = scene_data.get('visual_instructions', '')
+                if scene_data.get('clear_screen'):
+                    scene['clear_screen'] = True
         
-        await send_progress(websocket, "AI Debugging", "AI has provided a potential fix.")
-        logger.info(f"AI provided fixed script:\n{fixed_script}")
-        return fixed_script
+        await send_progress(websocket, "AI Showrunner", "Visuals designed.")
+        return scenes_with_visuals
+    except Exception as e:
+        logger.error(f"AI Showrunner failed: {e}")
+        return scenes_with_visuals
+
+async def manim_scripting_agent(topic: str, scenes_with_visuals: list, websocket: WebSocket) -> str:
+    await send_progress(websocket, "AI Animator", "Writing Manim code...")
+    prompt = f"""
+    You are a Manim code generator. Write a complete Manim script by precisely following the storyboard.
+
+    **Topic:** {topic}
+    **Storyboard:**
+    ---
+    {json.dumps(scenes_with_visuals, indent=2)}
+    ---
+
+    **CRITICAL INSTRUCTIONS:**
+    1.  **Use the LayoutManager**: At the start of `construct`, you MUST initialize the layout manager: `layout = LayoutManager(self)`.
+    2.  **ONLY Use LayoutManager for Positioning**: For all positioning, you MUST use the methods described in the `visual_instructions`, like `layout.place()` or `layout.next_to()`. Do not use `.move_to()`, `.to_edge()`, etc.
+    3.  **Clear Screen on Command**: If `"clear_screen": true`, you MUST call `layout.get_all_mobjects()` and fade them out.
+    4.  **Match Durations**: The animations and waits in each scene block MUST add up to the `duration` for that scene.
+    5.  **Single Scene Class**: Create one scene named `{topic.replace(" ", "")}`.
+
+    **Output Format (JSON with a "script" key):**
+    {{
+        "script": "from manim import *\\n\\nclass {topic.replace(" ", "")}(Scene):\\n    def construct(self):\\n        layout = LayoutManager(self)\\n        # ... your code here ..."
+    }}
+    """
+    if not generation_model: raise Exception("Generation model not configured.")
+    try:
+        response = await generation_model.generate_content_async(prompt)
+        cleaned_text = clean_ai_response(response.text)
+        json_string = cleaned_text.strip().split("```json\n")[1].split("```")[0]
+        script_data = json.loads(json_string)
+        if "script" not in script_data: raise Exception("Invalid script format.")
+        await send_progress(websocket, "AI Animator", "Manim script generated.")
+        return script_data['script']
+    except Exception as e:
+        logger.error(f"AI Scripting failed: {e}")
+        return f"from manim import *\\n\\nclass {topic.replace(' ', '')}(Scene):\\n    def construct(self):\\n        self.add(Text('AI Script Generation Failed', color=RED))"
+
+async def debug_manim_script(original_script: str, error_log: str, websocket: WebSocket) -> str:
+    await send_progress(websocket, "AI Debugging", "Attempting to fix script...")
+    prompt = f"""
+    The Manim script failed with an error. Please fix it.
+    **Error:**
+    ---
+    {error_log}
+    ---
+    **Original Script:**
+    ---
+    {original_script}
+    ---
+    Provide only the corrected, complete Python code in a single JSON object with the key "script".
+    """
+    if not debug_model: raise Exception("Debug model not configured.")
+    try:
+        response = await debug_model.generate_content_async(prompt)
+        cleaned_text = clean_ai_response(response.text)
+        json_string = cleaned_text.strip().split("```json\n")[1].split("```")[0]
+        script_data = json.loads(json_string)
+        await send_progress(websocket, "AI Debugging", "Script fixed. Retrying.")
+        return script_data['script']
     except Exception as e:
         logger.error(f"AI Debugging failed: {e}")
-        raise Exception(f"The AI debugger failed to generate a fix: {e}")
+        raise Exception(f"AI debugger failed: {e}")
 
-
-# --- WebSocket Endpoint ---
+# --- Main Pipeline ---
 @app.websocket("/ws/generate-full-animation")
 async def ws_generate_full_animation(websocket: WebSocket):
     await manager.connect(websocket)
     try:
-        while True:
-            data = await websocket.receive_json()
-            message_type = data.get("type")
-
-            if message_type == "start":
-                topic = data.get("topic")
-                quality = data.get("quality", "low_quality")
-                voice = data.get("voice", "Puck")
-                
-                if not topic:
-                    await send_progress(websocket, "Error", "Topic is required.", status="error")
-                    continue
-
-                task = asyncio.create_task(
-                    full_animation_pipeline(websocket, topic, quality, voice)
-                )
-                manager.assign_task(websocket, task)
-
-            elif message_type == "stop":
-                logger.info("Stop request received. Cancelling task.")
-                task = manager.active_connections.get(websocket)
-                if task and not task.done():
-                    task.cancel()
-                    await send_progress(websocket, "Cancelled", "Animation generation stopped by user.")
-                
+        data = await websocket.receive_json()
+        if data.get("type") == "start":
+            topic = data.get("topic")
+            if not topic:
+                await send_progress(websocket, "Error", "Topic is required.", status="error")
+                return
+            task = asyncio.create_task(
+                full_animation_pipeline(websocket, topic, data.get("quality", "low_quality"), data.get("voice", "Puck"))
+            )
+            manager.assign_task(websocket, task)
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
-    except asyncio.CancelledError:
-        await send_progress(websocket, "Cancelled", "Process cancelled.")
         manager.disconnect(websocket)
     except Exception as e:
         logger.error(f"WebSocket Error: {e}")
         await send_progress(websocket, "Error", str(e), status="error")
         manager.disconnect(websocket)
 
-
 async def full_animation_pipeline(websocket: WebSocket, topic: str, quality: str, voice: str):
-    """The complete pipeline from topic to animated video with TTS, with a multi-step debug loop."""
     script_content = None
     try:
         scene_name = topic.replace(" ", "")
         
-        # 1. AI generates script, narration, and markers
-        ai_content = await generate_ai_script_and_narration(topic, websocket)
-        script_content = ai_content["script"]
-        narration_text = ai_content["narration"]
-        animation_markers = ai_content["animation_markers"]
+        # 1. AI agents generate content
+        narration_content = await narration_agent(topic, websocket)
+        narration_text = narration_content["narration"]
+        animation_markers = narration_content["animation_markers"]
+        await manager.send_json(websocket, {"narration": narration_text})
 
-        await manager.send_json(websocket, {"script": script_content, "narration": narration_text})
-
-        # 2. Generate TTS and Synchronization Data
-        if not tts_service:
-            raise Exception("TTS Service is not configured.")
+        scenes_with_visuals = await showrunner_agent(narration_text, animation_markers, websocket)
+        script_content = await manim_scripting_agent(topic, scenes_with_visuals, websocket)
         
+        # Inject LayoutManager code into the script
+        final_script = LAYOUT_MANAGER_CODE + "\n" + script_content
+        await manager.send_json(websocket, {"script": final_script})
+
+        # 2. TTS and Sync
+        if not tts_service: raise Exception("TTS Service not configured.")
         scene_duration = max(marker['time'] for marker in animation_markers) if animation_markers else 0
-        
-        await send_progress(websocket, "TTS", f"Generating voice-over with '{voice}' and calculating sync data...")
-        tts_request = TTSRequest(
-            text=narration_text, 
-            script=script_content,
-            voice=voice,
-            scene_duration=scene_duration,
-            animation_markers=animation_markers
-        )
+        tts_request = TTSRequest(text=narration_text, script=final_script, voice=voice, scene_duration=scene_duration, animation_markers=animation_markers)
         tts_response = await tts_service.generate_speech(tts_request)
-        await send_progress(websocket, "TTS", f"Audio file created at {tts_response.audio_path}")
-
-        # 3. Apply Synchronization to Manim Script
+        
         if tts_response.sync_data:
-            await send_progress(websocket, "Sync", "Applying advanced timing synchronization to script...")
-            script_content = AnimationVoiceSync.generate_synced_manim_script(script_content, tts_response)
-            await manager.send_json(websocket, {"script": script_content}) # Update frontend with synced script
+            final_script = AnimationVoiceSync.generate_synced_manim_script(final_script, tts_response)
+            await manager.send_json(websocket, {"script": final_script})
         
         script_path = TEMP_DIR / f"{scene_name}_script.py"
-        script_path.write_text(script_content)
-        await send_progress(websocket, "File IO", f"Synced script saved to {script_path}")
+        script_path.write_text(final_script)
 
-        # 4. Render animation (with a 3-attempt debugging loop)
-        max_render_attempts = 5
-        video_path_no_audio = None
-        
+        # 3. Render and Combine
+        max_render_attempts = 10
         for attempt in range(max_render_attempts):
             try:
-                await send_progress(websocket, "Manim", f"Starting Manim rendering (Attempt {attempt + 1}/{max_render_attempts})...")
-                video_path_no_audio = await run_manim_websockets(
-                    websocket, str(script_path), scene_name, quality
-                )
-                await send_progress(websocket, "Manim", "Manim rendering successful!")
-                break
-            except ManimRenderingError as e:
-                logger.error(f"Manim rendering failed on attempt {attempt + 1}. Error log:\n{e.error_log}")
-                if attempt >= max_render_attempts - 1:
-                    await send_progress(websocket, "Error", "AI Debugging failed to fix the script.", status="error")
-                    raise e
+                await send_progress(websocket, "Manim", f"Rendering (Attempt {attempt + 1}/{max_render_attempts})...")
+                video_path_no_audio = await run_manim_websockets(websocket, str(script_path), scene_name, quality)
+                await send_progress(websocket, "Manim", "Rendering successful!")
                 
-                script_content = await debug_manim_script(script_content, e.error_log, websocket)
-                script_path.write_text(script_content)
-                await manager.send_json(websocket, {"script": script_content})
-
-        if not video_path_no_audio:
-            raise Exception("Failed to render video after all attempts.")
-
-        # 5. Combine video and audio
-        await send_progress(websocket, "FFmpeg", "Combining video and audio...")
-        final_video_path = await combine_audio_video(
-            video_path_no_audio, tts_response.audio_path, OUTPUT_DIR / f"{scene_name}_final.mp4"
-        )
-        await send_progress(websocket, "FFmpeg", f"Final video saved to {final_video_path}")
+                final_video_path = await combine_audio_video(video_path_no_audio, tts_response.audio_path, OUTPUT_DIR / f"{scene_name}_final.mp4")
+                
+                await manager.send_json(websocket, {"status": "completed", "output_file": f"/output/{Path(final_video_path).name}"})
+                return
+            except ManimRenderingError as e:
+                logger.error(f"Manim rendering failed on attempt {attempt + 1}. Error:\n{e.error_log}")
+                if attempt >= max_render_attempts - 1:
+                    raise e
+                final_script = await debug_manim_script(final_script, e.error_log, websocket)
+                script_path.write_text(final_script)
+                await manager.send_json(websocket, {"script": final_script})
         
-        # 6. Send completion message
-        await manager.send_json(websocket, {
-            "status": "completed",
-            "output_file": f"/output/{Path(final_video_path).name}"
-        })
+        raise Exception("Failed to render video after all attempts.")
 
     except asyncio.CancelledError:
         await send_progress(websocket, "Cancelled", "Animation generation was cancelled.")
     except Exception as e:
-        logger.error(f"Pipeline failed: {e}")
+        logger.error(f"Pipeline failed: {e}", exc_info=True)
         await send_progress(websocket, "Error", f"An error occurred: {e}", status="error")
 
-
-async def run_manim_websockets(
-    websocket: WebSocket, script_path: str, scene_name: str, quality: str
-) -> str:
-    """Run Manim and stream progress over WebSockets."""
-    quality_flags = {
-        "low_quality": "-ql", "medium_quality": "-qm",
-        "high_quality": "-qh", "production_quality": "-qk"
-    }
+async def run_manim_websockets(websocket: WebSocket, script_path: str, scene_name: str, quality: str) -> str:
+    quality_flags = {"low_quality": "-ql", "medium_quality": "-qm", "high_quality": "-qh", "production_quality": "-qk"}
+    cmd = ["manim", quality_flags.get(quality, "-ql"), "--media_dir", str(OUTPUT_DIR), script_path, scene_name]
+    process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     
-    output_filename_base = f"{scene_name}_{quality}"
-    
-    cmd = [
-        "manim", quality_flags.get(quality, "-ql"),
-        "--output_file", output_filename_base,
-        "--media_dir", str(OUTPUT_DIR),
-        script_path, scene_name
-    ]
-
-    process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-
-    stderr_capture = []
-
-    async def stream_logs(stream, log_prefix, capture_list=None):
+    async def stream_logs(stream, log_prefix, capture_list):
         while True:
             line = await stream.readline()
             if not line: break
             message = line.decode().strip()
-            if capture_list is not None:
-                capture_list.append(message)
-            logger.info(f"{log_prefix}: {message}")
+            capture_list.append(message)
             await send_progress(websocket, f"Manim {log_prefix}", message)
     
+    stdout_capture, stderr_capture = [], []
     await asyncio.gather(
-        stream_logs(process.stdout, "stdout"),
+        stream_logs(process.stdout, "stdout", stdout_capture),
         stream_logs(process.stderr, "stderr", stderr_capture)
     )
     await process.wait()
 
     if process.returncode != 0:
-        full_error_log = "\n".join(stderr_capture)
-        raise ManimRenderingError(
-            f"Manim rendering failed with exit code {process.returncode}",
-            error_log=full_error_log
-        )
+        raise ManimRenderingError("Manim rendering failed", "\n".join(stderr_capture))
 
-    resolution_map = {"low_quality": "480p15", "medium_quality": "720p30", "high_quality": "1080p60", "production_quality": "2160p60"}
-    res_folder = resolution_map.get(quality)
-    
-    search_dir = OUTPUT_DIR / "videos" / Path(script_path).stem / res_folder
-    
-    try:
-        # The output filename is set by the --output_file flag
-        output_file = next(search_dir.glob(f"{output_filename_base}.mp4"))
-        return str(output_file)
-    except StopIteration:
-        raise FileNotFoundError(f"Could not find the Manim output file in {search_dir}")
-
+    # Find the output file
+    expected_path_fragment = os.path.join("videos", Path(script_path).stem)
+    for line in stdout_capture:
+        if ".mp4" in line and expected_path_fragment in line:
+            # Manim's output path is relative to the media_dir
+            relative_path = line.split(":")[-1].strip()
+            return str(OUTPUT_DIR / relative_path)
+    raise FileNotFoundError(f"Could not find Manim output file path in logs.")
 
 async def combine_audio_video(video_path: str, audio_path: str, output_path: Path) -> str:
-    """Combine video and audio using ffmpeg."""
-    cmd = [
-        "ffmpeg",
-        "-i", video_path,
-        "-i", audio_path,
-        "-c:v", "copy",
-        "-c:a", "aac",
-        "-shortest",
-        "-y",
-        str(output_path)
-    ]
-    process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
-    stdout, stderr = await process.communicate()
+    cmd = ["ffmpeg", "-i", video_path, "-i", audio_path, "-c:v", "copy", "-c:a", "aac", "-shortest", "-y", str(output_path)]
+    process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    _, stderr = await process.communicate()
     if process.returncode != 0:
         raise Exception(f"FFmpeg failed: {stderr.decode()}")
     return str(output_path)
 
+# --- Static Files and Root ---
+app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
+app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "..", "frontend")), name="static")
 
-# --- Existing REST Endpoints ---
 @app.get("/")
 async def read_index():
-    return FileResponse(os.path.join(BASE_DIR, "frontend", "index.html"))
-
-# ... (keep all other existing REST endpoints)
-
-# This must be mounted AFTER all other routes to avoid overriding API endpoints
-app.mount("/output", StaticFiles(directory="/manim/output"), name="output")
-app.mount("/static", StaticFiles(directory="/manim/frontend"), name="static")
+    return FileResponse(os.path.join(os.path.dirname(__file__), "..", "frontend", "index.html"))
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
-
