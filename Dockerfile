@@ -24,8 +24,8 @@ ARG GID=1001
 RUN groupadd -g $GID manimgroup && \
     useradd -u $UID -g manimgroup -m -s /bin/bash manimuser
 
-RUN mkdir -p /manim/animations /manim/media /manim/temp /manim/uploads /manim/tts_output /manim/output /manim/logs /manim/manim_output /manim/assets && \
-    chown -R manimuser:manimgroup /manim
+RUN mkdir -p /manim/animations /manim/media /manim/temp /manim/uploads /manim/tts_output /manim/output /manim/logs /manim/manim_output /manim/assets /tmp/manim_output && \
+    chown -R manimuser:manimgroup /manim /tmp/manim_output
 
 USER manimuser
 WORKDIR /manim

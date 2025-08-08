@@ -139,7 +139,7 @@ async def full_animation_pipeline(websocket: WebSocket, content_input: str, is_u
         script_path = TEMP_DIR / f"{scene_name}_script.py"
         script_path.write_text(final_script)
 
-        max_render_attempts = 3
+        max_render_attempts = 10
         for attempt in range(max_render_attempts):
             try:
                 await send_progress(websocket, "Manim", f"Rendering (Attempt {attempt + 1}/{max_render_attempts})...")
@@ -156,6 +156,7 @@ async def full_animation_pipeline(websocket: WebSocket, content_input: str, is_u
                 logger.error(f"PIPELINE: Manim rendering failed on attempt {attempt + 1}. Error:\n{e.error_log}")
                 if attempt >= max_render_attempts - 1:
                     raise e
+                await send_progress(websocket, "console", "clear")
                 final_script = await debug_manim_script(final_script, e.error_log, websocket)
                 script_path.write_text(final_script)
                 await send_progress(websocket, "Script Debug", "Applied fix to script.", script=final_script)
@@ -176,6 +177,7 @@ async def run_manim_websockets(websocket: WebSocket, script_path: str, scene_nam
     cmd = [
         "manim", "render",
         quality_flags.get(quality, "-ql"),
+        "--media_dir", "/tmp/manim_output",
         script_path,
         scene_name,
         "--output_file", output_path

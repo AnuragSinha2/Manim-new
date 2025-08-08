@@ -65,9 +65,12 @@ async def one_shot_generation_agent(content_input: str, websocket: WebSocket, th
     - **Pacing**: The animation timings (`self.play`, `self.wait`) MUST be paced to match the flow of the narration you write.
     - **Adhere to the Theme**: The script's colors and animation choices must reflect the theme instructions.
     - **NO SVGs**: Do NOT use the `SVGMobject` class. All vector graphics must be requested via `image_prompts` and rendered with `ImageMobject`.
+    - **Use `Group` for Images**: When grouping `ImageMobject` objects with other objects, you MUST use `Group`, not `VGroup`.
     - **Image Placeholders**: If you need an image, you MUST use the `ImageMobject` class in your script with the exact `placeholder_id` as the filename.
     - **Use LayoutManager**: The script MUST use the provided `LayoutManager` for all object positioning.
     - **Clearing Screen**: Use `self.play(FadeOut(*layout.get_all_mobjects()))` to clear the screen between major ideas.
+    - **Simplicity**: Use simple, common Manim objects and animations. Avoid obscure or complex features.
+    - **Variable Names**: Do NOT use file paths as variable names. Use descriptive names like `image1`, `image2`, etc.
     """
     if not generation_model:
         raise Exception("Generation model not configured.")
