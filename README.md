@@ -21,6 +21,40 @@ This project provides:
 ### Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) and Docker Compose installed on your system
+- A Google Cloud project with the Vertex AI API enabled
+- A Gemini API key
+
+### Running the Application
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/YOUR_USERNAME/manim-docker-mcp.git
+    cd manim-docker-mcp
+    ```
+
+2.  **Set up your environment:**
+    - Create a `.env` file in the project root and add your API keys:
+      ```
+      GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+      GCP_PROJECT_ID="YOUR_GCP_PROJECT_ID"
+      GCP_LOCATION="YOUR_GCP_LOCATION"
+      ```
+
+3.  **Authenticate with Google Cloud:**
+    - Run the following command to generate your local application default credentials:
+      ```bash
+      gcloud auth application-default login
+      ```
+    - This will create a file named `application_default_credentials.json`. Copy this file to the project root and rename it to `adc.json`.
+
+4.  **Build and run the application:**
+    ```bash
+    docker compose build
+    docker compose up -d
+    ```
+
+5.  **Access the application:**
+    - The web interface will be available at [http://localhost:8000](http://localhost:8000).
 
 ### Installation
 

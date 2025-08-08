@@ -1,10 +1,29 @@
 document.addEventListener('DOMContentLoaded', () => {
     const topicInput = document.getElementById('topic-input');
+    const urlInput = document.getElementById('url-input');
+    const pdfInput = document.getElementById('pdf-input');
     const generateBtn = document.getElementById('generate-animation-btn');
     const stopBtn = document.getElementById('stop-generation-btn');
     const qualitySelect = document.getElementById('quality-select');
     const voiceSelect = document.getElementById('voice-select');
+    const themeSelect = document.getElementById('theme-select');
     const modelSelect = document.getElementById('model-select');
+
+    // Populate voice options
+    const voices = [
+        "achernar", "achird", "algenib", "algieba", "alnilam", "aoede", "autonoe", 
+        "callirrhoe", "charon", "despina", "enceladus", "erinome", "fenrir", 
+        "gacrux", "iapetus", "kore", "laomedeia", "leda", "orus", "puck", 
+        "pulcherrima", "rasalgethi", "sadachbia", "sadaltager", "schedar", 
+        "sulafat", "umbriel", "vindemiatrix", "zephyr", "zubenelgenubi"
+    ];
+    voices.forEach(voice => {
+        const option = document.createElement('option');
+        option.value = voice;
+        option.textContent = voice.charAt(0).toUpperCase() + voice.slice(1);
+        voiceSelect.appendChild(option);
+    });
+        voiceSelect.value = 'achernar'; // Set default voice
     
     const outputSection = document.querySelector('.output-section');
     const outputLog = document.getElementById('output-log');
@@ -23,6 +42,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let socket;
 
+    function showToast(message, type = 'info') {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        
+        toast.className = 'show';
+        if (type === 'error') {
+            toast.classList.add('error');
+        } else if (type === 'success') {
+            toast.classList.add('success');
+        }
+
+        setTimeout(() => {
+            toast.className = toast.className.replace('show', '');
+        }, 3000);
+    }
+
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
             tabs.forEach(item => item.classList.remove('active'));
@@ -35,9 +70,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function setControlsDisabled(disabled) {
         topicInput.disabled = disabled;
+        urlInput.disabled = disabled;
         generateBtn.disabled = disabled;
         qualitySelect.disabled = disabled;
         voiceSelect.disabled = disabled;
+        themeSelect.disabled = disabled;
         modelSelect.disabled = disabled;
         stopBtn.classList.toggle('hidden', !disabled);
         generateBtn.classList.toggle('hidden', disabled);
@@ -54,33 +91,58 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadNarrationBtn.classList.add('hidden');
     }
 
-    generateBtn.addEventListener('click', () => {
+    generateBtn.addEventListener('click', async () => {
         const topic = topicInput.value.trim();
-        if (!topic) {
-            alert('Please enter a topic.');
+        const url = urlInput.value.trim();
+        const pdfFile = pdfInput.files[0];
+
+        if (!topic && !url && !pdfFile) {
+            showToast('Please enter a topic, a URL, or select a PDF file.', 'error');
             return;
+        }
+
+        let pdfPath = null;
+        if (pdfFile) {
+            const formData = new FormData();
+            formData.append('file', pdfFile);
+
+            try {
+                const response = await fetch('/upload-pdf', {
+                    method: 'POST',
+                    body: formData,
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    pdfPath = result.path;
+                    showToast('PDF uploaded successfully!', 'success');
+                } else {
+                    throw new Error(result.detail || 'PDF upload failed.');
+                }
+            } catch (error) {
+                showToast(error.message, 'error');
+                return;
+            }
         }
 
         const quality = qualitySelect.value;
         const voice = voiceSelect.value;
+        const theme = themeSelect.value;
         const model = modelSelect.value;
 
-        // Disable controls
         setControlsDisabled(true);
-
-        // Show output section
+        generateBtn.classList.add('loading');
         outputSection.classList.remove('hidden');
         statusOverlay.classList.remove('hidden');
         
-        // Clear previous outputs
         clearOutputs();
 
-        // Open WebSocket connection
+        console.log("Attempting to open WebSocket connection...");
         socket = new WebSocket(`ws://${window.location.host}/ws/generate-full-animation`);
 
         socket.onopen = () => {
             console.log("WebSocket connection established.");
-            socket.send(JSON.stringify({ type: "start", topic, quality, voice, model }));
+            showToast('Connection established. Starting generation...');
+            socket.send(JSON.stringify({ type: "start", topic, url, pdf_path: pdfPath, quality, voice, theme, model }));
         };
 
         socket.onmessage = (event) => {
@@ -91,13 +153,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 const stage = data.stage ? `[${data.stage}] ` : '';
                 const message = `${stage}${data.message}\n`;
                 outputLog.textContent += message;
+                outputLog.scrollTop = outputLog.scrollHeight;
                 statusText.textContent = data.message;
+
+                if (data.status === 'error') {
+                    showToast(data.message, true);
+                }
+                if (data.stage === 'Cancelled') {
+                    showToast('Animation generation stopped.');
+                }
             }
 
             if (data.status === 'error' || data.status === 'completed') {
                 setControlsDisabled(false);
+                generateBtn.classList.remove('loading');
                 if (data.status === 'completed') {
                     statusOverlay.classList.add('hidden');
+                    if (data.output_file) {
+                        showToast('Animation generated successfully!');
+                    }
                 }
             }
 
@@ -111,10 +185,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (data.output_file) {
                 animationOutput.innerHTML = `<video controls src="${data.output_file}" type="video/mp4"></video>`;
-            }
-            if (data.tts_audio_url) {
-                audioPlayer.src = data.tts_audio_url;
-                audioPlayerContainer.classList.remove('hidden');
+                // The audio is now part of the main video, so we can hide the separate player.
+                audioPlayerContainer.classList.add('hidden');
             }
             if (data.image_components) {
                 imageComponentsOutput.innerHTML = '<h4>Generated Image Components:</h4>';
@@ -139,18 +211,21 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.onclose = () => {
             console.log("WebSocket connection closed.");
             setControlsDisabled(false);
+            generateBtn.classList.remove('loading');
         };
 
         socket.onerror = (error) => {
             console.error("WebSocket error:", error);
-            outputLog.textContent += "A connection error occurred. Please check the server logs.\n";
+            showToast('A connection error occurred. Please check the server logs.', true);
             setControlsDisabled(false);
+            generateBtn.classList.remove('loading');
         };
     });
 
     stopBtn.addEventListener('click', () => {
         if (socket) {
-            socket.send(JSON.stringify({ type: "stop" }));
+            socket.close();
+            showToast('Stopping generation...');
         }
     });
 
@@ -173,4 +248,29 @@ document.addEventListener('DOMContentLoaded', () => {
         a.click();
         URL.revokeObjectURL(url);
     });
+
+    // Theme switcher logic
+    const themeSwitch = document.getElementById('checkbox');
+    themeSwitch.addEventListener('change', () => {
+        if (themeSwitch.checked) {
+            document.body.classList.remove('light-mode');
+            document.body.classList.add('dark-mode');
+            localStorage.setItem('theme', 'dark-mode');
+        } else {
+            document.body.classList.remove('dark-mode');
+            document.body.classList.add('light-mode');
+            localStorage.setItem('theme', 'light-mode');
+        }
+    });
+
+    // Set initial theme
+    const currentTheme = localStorage.getItem('theme');
+    if (currentTheme) {
+        document.body.classList.add(currentTheme);
+        if (currentTheme === 'dark-mode') {
+            themeSwitch.checked = true;
+        }
+    } else {
+        document.body.classList.add('light-mode');
+    }
 });

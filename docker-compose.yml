@@ -1,7 +1,5 @@
 # docker-compose.yml - Enhanced with TTS support
 
-version: '3.8'
-
 services:
   manim:
     build: .
@@ -21,26 +19,31 @@ services:
 
   manim-api:
     build: .
-    user: root
+    user: manimuser
     container_name: manim-tts-api
     ports:
       - "8000:8000"
     volumes:
-      - "C:/Users/Anurag/AppData/Roaming/gcloud:/root/.config/gcloud"
       - ./animations:/manim/animations
       - ./output:/manim/output
-      - ./temp:/manim/temp
       - ./uploads:/manim/uploads
+      - ./temp:/manim/temp
       - ./tts_output:/manim/tts_output
       - ./media:/manim/media
       - ./frontend:/manim/frontend
+      - ./images:/manim/images
+      # Mount the gcloud credentials for Vertex AI
+            # Mount the gcloud credentials for Vertex AI
+            # Mount the gcloud credentials for Vertex AI
+      - ./adc.json:/home/manimuser/.config/gcloud/application_default_credentials.json:ro
     environment:
-      - GOOGLE_APPLICATION_CREDENTIALS=/root/.config/gcloud/application_default_credentials.json
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - GCP_LOCATION=${GCP_LOCATION}
       - PYTHONPATH=/manim:/manim/app
       - MANIM_LOG_LEVEL=INFO
       - SDL_AUDIODRIVER=dummy
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--ws-ping-interval", "20"]
     restart: unless-stopped
 
   # Optional: Redis for caching and background tasks

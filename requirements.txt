@@ -1,42 +1,32 @@
-# requirements.txt - Updated to latest stable versions
-
-# Core Manim and web framework
+# Core Dependencies
+fastapi
+uvicorn[standard]
+python-dotenv
 manim
-fastapi[all]
+python-multipart
 
-# TTS and AI
+# AI & Cloud Services
 google-generativeai
-google-cloud-texttospeech
+google-cloud-aiplatform
 google-auth
 
-# Audio processing
+# Audio/Visual Processing
 librosa
 soundfile
 pygame
 pydub
-pyaudio
-
-# Data processing and utilities
-numpy
-scipy
-pandas
-pydantic
-aiofiles
-httpx
-
-# Image and video processing
-Pillow
 opencv-python
 matplotlib
 
-# Development and testing
-pytest
-pytest-asyncio
-black
-flake8
+# Web & Async
+aiofiles
+httpx
+beautifulsoup4
 
-# Additional utilities
+# PDF Processing
+pypdf
+
+# Utilities
 pathlib
 json-logging
-python-dotenv
 typing-extensions
