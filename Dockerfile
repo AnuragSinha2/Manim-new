@@ -36,6 +36,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 ENV PATH="/home/manimuser/.local/bin:${PATH}"
 COPY --chown=manimuser:manimgroup . .
 
+USER root
+RUN chmod +x /manim/docker-entrypoint.sh
+
 EXPOSE 8000
 ENTRYPOINT ["/manim/docker-entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

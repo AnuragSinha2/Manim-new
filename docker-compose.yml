@@ -19,7 +19,6 @@ services:
 
   manim-api:
     build: .
-    user: manimuser
     container_name: manim-tts-api
     ports:
       - "8000:8000"

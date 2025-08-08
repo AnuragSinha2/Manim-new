@@ -53,6 +53,8 @@ async def one_shot_generation_agent(content_input: str, websocket: WebSocket, th
     You are an expert AI director for Manim, the mathematical animation engine.
     Your goal is to generate a complete plan for a short video based on the topic: "{content_input}".
 
+    **Creative Direction**: Create a visually engaging video that is a DYNAMIC MIX of Manim animations and still images. Do not just show a series of static images. Use Manim's animation capabilities to create motion and explain concepts, and use still images to illustrate specific points or add visual variety.
+
     The visual theme for the animation must be: **{theme}**.
     **Theme instructions**: {theme_instructions.get(theme, theme_instructions['default'])}
 

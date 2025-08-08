@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pypdf import PdfReader
+import librosa
+import re
 
 from ws_utils import manager, send_progress, send_error
 from agents import one_shot_generation_agent, debug_manim_script
@@ -114,6 +116,29 @@ async def full_animation_pipeline(websocket: WebSocket, content_input: str, is_u
         if not tts_service: raise Exception("TTS Service not configured.")
         tts_response = await tts_service.generate_speech(TTSRequest(text=narration_text, voice=voice))
         
+        audio_duration = librosa.get_duration(path=tts_response.audio_path)
+        
+        # Calculate the current video duration
+        current_video_duration = 0
+        for line in script_content.split('\n'):
+            wait_match = re.search(r'self\.wait\((.*?)\)', line)
+            if wait_match:
+                try:
+                    current_video_duration += float(wait_match.group(1))
+                except (ValueError, IndexError):
+                    pass  # Ignore if parsing fails
+            
+            play_match = re.search(r'self\.play\(.*run_time=(.*?)\)', line)
+            if play_match:
+                try:
+                    current_video_duration += float(play_match.group(1))
+                except (ValueError, IndexError):
+                    pass # Ignore if parsing fails
+
+        # Add a final wait to match the audio duration
+        if audio_duration > current_video_duration:
+            script_content += f"\n        self.wait({audio_duration - current_video_duration})"
+
         final_script = LAYOUT_MANAGER_CODE + "\n" + script_content
         
         if image_prompts and image_service:
@@ -153,7 +178,7 @@ async def full_animation_pipeline(websocket: WebSocket, content_input: str, is_u
                 logger.info("PIPELINE: Completed successfully.")
                 return
             except ManimRenderingError as e:
-                logger.error(f"PIPELINE: Manim rendering failed on attempt {attempt + 1}. Error:\n{e.error_log}")
+                logger.info(f"PIPELINE: Manim rendering failed on attempt {attempt + 1}. Error:\n{e.error_log}")
                 if attempt >= max_render_attempts - 1:
                     raise e
                 await send_progress(websocket, "console", "clear")
@@ -166,6 +191,7 @@ async def full_animation_pipeline(websocket: WebSocket, content_input: str, is_u
     except Exception as e:
         logger.error(f"PIPELINE: A critical error occurred: {e}", exc_info=True)
         await send_error(websocket, f"A critical error occurred in the pipeline: {e}")
+
 
 async def run_manim_websockets(websocket: WebSocket, script_path: str, scene_name: str, quality: str) -> str:
     logger.info(f"MANIM: Starting render for {script_path}")
